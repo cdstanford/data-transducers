@@ -1,49 +1,16 @@
-extern crate derive_more;
-use derive_more::{Display, From};
-use std::ops::Add;
+/*
+Top-level module and entrypoint for data transducers project.
+*/
+
+mod ext_value;
+
+use ext_value::ExtValue;
 
 // use std::cell::RefCell;
 // use std::rc::{Rc, Weak};
 // use std::fmt::Display;
 
-#[derive(Debug, PartialEq, Display, From, Copy, Clone)]
-enum ExtValue<T> {
-    None,
-    One(T),
-    Many,
-}
 
-impl<T: Copy> Add for ExtValue<T> {
-    type Output = Self;
-    
-    fn add(self, other: Self) -> Self {
-        match self {
-            ExtValue::None => other,
-            ExtValue::One(_x) =>
-                match other {
-                    ExtValue::None => self,
-                    ExtValue::One(_y) => ExtValue::Many,
-                    ExtValue::Many => ExtValue::Many,
-                },
-            ExtValue::Many => ExtValue::Many,
-        }
-    }
-}
-
-// impl<T:Display> Display for ExtValue<T> {
-//     fn fmt(&self, w: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
-//         write!(w, "[")?;
-//         let mut node = self.first.clone();
-//         while let Some(n) = node {
-//             write!(w, "{}", n.borrow().data)?;
-//             node = n.borrow().next.clone();
-//             if node.is_some() {
-//                 write!(w, ", ")?;
-//             }
-//         }
-//         write!(w, "]")
-//     }
-// }
 
 // 
 // struct State {
