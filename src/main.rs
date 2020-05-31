@@ -1,21 +1,19 @@
-// use std::cell::RefCell;
-// use std::rc::{Rc, Weak};
-// use std::fmt::Display;
-// #[macro_use] extern crate custom_derive;
-// #[macro_use] extern crate enum_derive;
 extern crate derive_more;
-// use derive_more::{Add, Display, From, Into};
 use derive_more::{Display, From};
 use std::ops::Add;
 
-#[derive(Debug, PartialEq, Display, From)]
+// use std::cell::RefCell;
+// use std::rc::{Rc, Weak};
+// use std::fmt::Display;
+
+#[derive(Debug, PartialEq, Display, From, Copy, Clone)]
 enum ExtValue<T> {
     None,
     One(T),
     Many,
 }
 
-impl<T> Add for ExtValue<T> {
+impl<T: Copy> Add for ExtValue<T> {
     type Output = Self;
     
     fn add(self, other: Self) -> Self {
