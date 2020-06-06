@@ -4,18 +4,15 @@ Top-level module and entrypoint for data transducers project.
 
 mod ext_value;
 
-use ext_value::ExtValue;
+use ext_value::Ext;
 
 // use std::cell::RefCell;
 // use std::rc::{Rc, Weak};
 // use std::fmt::Display;
 
-
-
-// 
-// struct State {
-//     pub val: ExtValue,    
-// }
+struct State<T> {
+    pub val: Ext<T>,
+}
 
 // struct Edge1<T1, T2> {
 //     // An edge from int to int
@@ -30,15 +27,15 @@ fn main() {
     println!("=== Data Transducers Library ===");
 
     // let mut three : i32 = 3;
-    let ev0 : ExtValue<i32> = ExtValue::None;
-    let ev1 = ExtValue::One(3);
-    let ev2 : ExtValue<i32> = ExtValue::Many;
+    let ev0 : Ext<i32> = Ext::None;
+    let ev1 = Ext::One(3);
+    let ev2 : Ext<i32> = Ext::Many;
 
     println!("{}, {}, {}", ev0, ev1, ev2);
 
-    // let mut ev3 : ExtValue<i32> = ExtValue::None;
-    // let ev4 : ExtValue<i64> = ExtValue::None;
-    // let ev5 : ExtValue<i32> = ExtValue::One(4);
+    // let mut ev3 : Ext<i32> = Ext::None;
+    // let ev4 : Ext<i64> = Ext::None;
+    // let ev5 : Ext<i32> = Ext::One(4);
     // 
     // 
     // assert!(ev1 != ev2);
