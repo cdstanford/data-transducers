@@ -3,7 +3,8 @@ Module implementing "extended values" Ext<T>,
 that is, values which can be None, One (with a value),
 or Many.
 
-Ext<T> can be thought variant of Option<T>.
+Ext<T> can be thought variant of Option<T>, where Many
+represents a multiset of two or more values.
 */
 
 extern crate derive_more;
@@ -24,9 +25,9 @@ impl<T: Copy> ops::Add for Ext<T> {
     fn add(self, other: Self) -> Self {
         match self {
             Ext::None => other,
-            Ext::One(_x) => match other {
+            Ext::One(_) => match other {
                 Ext::None => self,
-                Ext::One(_y) => Ext::Many,
+                Ext::One(_) => Ext::Many,
                 Ext::Many => Ext::Many,
             },
             Ext::Many => Ext::Many,
@@ -57,7 +58,7 @@ fn apply2<T1, T2, T3>(op: fn(T1, T2) -> T3,
         },
         Ext::Many => match v2 {
             Ext::None => Ext::None,
-            Ext::One(y) => Ext::Many,
+            Ext::One(_) => Ext::Many,
             Ext::Many => Ext::Many,
         }
     }
@@ -90,7 +91,7 @@ mod tests {
         assert_ne!(Ext::One(-1), Ext::One(1));
         assert_ne!(Ext::One(0), Ext::None);
         assert_ne!(Ext::None, Ext::One(0));
-        let mut x1 : Ext<i32> = Ext::None;
+        let x1 : Ext<i32> = Ext::None;
         let x2 : Ext<i32> = Ext::None;
         let x3 : Ext<i32> = Ext::Many;
         assert_ne!(x2, x3);
@@ -102,9 +103,9 @@ mod tests {
 
     #[test]
     fn test_apply() {
-        let mut x0 : Ext<i32> = Ext::None;
+        let x0 : Ext<i32> = Ext::None;
         let x1 = Ext::One(3);
-        let mut x2 = Ext::One(2);
+        let x2 = Ext::One(2);
         let x3 : Ext<i32> = Ext::Many;
         assert_eq!(apply1(i32::count_ones, x0), Ext::None);
         assert_eq!(apply1(i32::count_ones, x1), Ext::One(2));
