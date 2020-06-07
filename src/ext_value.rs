@@ -9,7 +9,7 @@ represents a multiset of two or more values.
 
 extern crate derive_more;
 use derive_more::{Display, From};
-use std::{ops,i32};
+use std::ops;
 
 #[derive(Debug, PartialEq, Display, From, Copy, Clone)]
 pub enum Ext<T> {
@@ -35,6 +35,7 @@ impl<T: Copy> ops::Add for Ext<T> {
     }
 }
 
+#[allow(dead_code)]
 fn apply1<T1, T2>(op: fn(T1) -> T2,
                   v1: Ext<T1>)
                   -> Ext<T2> {
@@ -45,6 +46,7 @@ fn apply1<T1, T2>(op: fn(T1) -> T2,
     }
 }
 
+#[allow(dead_code)]
 fn apply2<T1, T2, T3>(op: fn(T1, T2) -> T3,
                       v1: Ext<T1>,
                       v2:Ext<T2>)
@@ -65,6 +67,9 @@ fn apply2<T1, T2, T3>(op: fn(T1, T2) -> T3,
 }
 
 // ========== TESTS ==========
+
+#[cfg(test)]
+use std::i32;
 
 #[cfg(test)]
 mod tests {
