@@ -6,8 +6,11 @@ for data transducers, with core constructors and operations.
 use super::ext_value::Ext;
 
 /*
-    Trait for states: objects which have an Ext value and
-    can be initialized, read, updated, and reset.
+    To support arbitrary types inside the machine,
+    States and Transitions are implemented as traits.
+    Both states and transitions are objects which have
+    an Ext value and can be initialized, read, updated,
+    and reset.
 
     add: add a new current value
     get: get the current value
@@ -17,10 +20,9 @@ use super::ext_value::Ext;
     get_prev: get the previous value
     set_prev: update the previous value to the current one
 */
-pub trait State {
+pub trait Statelike {
     type Val;
 
-    // fn add(&self, &Self::Val, i32) -> ();
     fn add(&self, _: &Ext<&Self::Val>) -> ();
     fn get(&self) -> Ext<&Self::Val>;
     fn reset(&self) -> ();
@@ -29,6 +31,15 @@ pub trait State {
     fn get_prev(&self) -> Ext<&Self::Val>;
     fn set_prev(&self) -> ();
 }
+
+/*
+    A state machine (data transducer) is then constructed
+    from States and Transitions, whih both implement the
+    Statelike trait.
+    - UnionState: the value of the state is the union of
+      TODO
+    - TODO
+*/
 
 // States and transitions are objects which have a value
 
