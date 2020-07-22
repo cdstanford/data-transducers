@@ -2,8 +2,11 @@
 Top-level module and entrypoint for data transducers project.
 */
 
+#![allow(dead_code)]
+
 mod ext_value;
 mod state_machine;
+mod int_state_machine;
 
 use ext_value::Ext;
 

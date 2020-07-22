@@ -1,7 +1,6 @@
 /*
-Module implementing "extended values" Ext<T>,
-that is, values which can be None, One (with a value),
-or Many.
+Module implementing "extended values" Ext<T> --
+None, One (with a value in T), or Many.
 
 Ext<T> can be thought variant of Option<T>, where Many
 represents a multiset of two or more values.
@@ -35,8 +34,11 @@ impl<T: Copy> ops::Add for Ext<T> {
     }
 }
 
-#[allow(dead_code)]
-fn apply1<T1, T2>(op: fn(T1) -> T2,
+pub fn apply0<T1>(op: fn() -> T1) -> Ext<T1> {
+    Ext::One(op())
+}
+
+pub fn apply1<T1, T2>(op: fn(T1) -> T2,
                   v1: Ext<T1>)
                   -> Ext<T2> {
     match v1 {
@@ -46,8 +48,7 @@ fn apply1<T1, T2>(op: fn(T1) -> T2,
     }
 }
 
-#[allow(dead_code)]
-fn apply2<T1, T2, T3>(op: fn(T1, T2) -> T3,
+pub fn apply2<T1, T2, T3>(op: fn(T1, T2) -> T3,
                       v1: Ext<T1>,
                       v2:Ext<T2>)
                       -> Ext<T3> {
