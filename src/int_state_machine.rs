@@ -69,13 +69,35 @@ fn eval<X>(t: Transition<X>) -> Ext<i32> {
 }
 
 struct StateMachine<X> {
+    n_states: usize,
+    n_transitions: usize,
     states: Vec<State>,
     prev_states: Vec<State>,
     transitions: Vec<Transition<X>>,
 }
 
 impl<X> StateMachine<X> {
-    // TODO
+    fn reset_cur(&mut self) -> () {
+        for x in &mut self.states {
+            *x = Ext::None;
+        };
+    }
+    fn update_prev(&mut self) -> () {
+        for i in 0..(self.n_states) {
+            self.prev_states[i] = self.states[i];
+        }
+    }
+    fn reset(&mut self) -> () {
+        self.reset_cur();
+        self.update_prev();
+    }
+    fn update(&mut self, event: X) -> () {
+        /*
+            Naive implementation
+            Iterate through transition updates until there is no change
+        */
+        // TODO
+    }
 }
 
 
