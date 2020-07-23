@@ -38,7 +38,7 @@ enum Trans {
 }
 struct Transition<X> {
     t: Trans,
-    is_enabled: fn(X) -> bool,
+    is_enabled: fn(&X) -> bool,
 }
 
 fn sources<X>(t: Transition<X>) -> Vec<State> {
@@ -91,12 +91,24 @@ impl<X> StateMachine<X> {
         self.reset_cur();
         self.update_prev();
     }
-    fn update(&mut self, event: X) -> () {
+    fn update(&mut self, event: &X) -> () {
         /*
-            Naive implementation
-            Iterate through transition updates until there is no change
+            Completely wrong implementation for now:
+            Just evaluate all transitions, ignoring dependencies between them.
+            This works as long as all transitions refer to only previous states
+            as sources, never current states. So it doesn't allow e.g.
+            epsilon transitions.
         */
-        // TODO
+        self.update_prev();
+        self.reset_cur();
+        // Not working, TODO fix
+        // for t in &mut self.transitions {
+        //     if (t.is_enabled)(event) {
+        //         let s: State = target(t);
+        //         s = s + eval(t);
+        //         // target(t) = target(t) + eval(t);
+        //     }
+        // }
     }
 }
 
