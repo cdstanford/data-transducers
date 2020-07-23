@@ -14,10 +14,7 @@ use super::ext_value;
 use std::i32;
 use std::vec::Vec;
 
-struct State {
-    curr: Ext<i32>,
-    prev: Ext<i32>,
-}
+type State = Ext<i32>;
 
 struct Trans0 {
     target: State,
@@ -34,41 +31,53 @@ struct Trans2 {
     target: State,
     eval: fn(i32, i32) -> i32,
 }
-
-enum Transition {
+enum Trans {
     T0(Trans0),
     T1(Trans1),
     T2(Trans2),
 }
+struct Transition<X> {
+    t: Trans,
+    is_enabled: fn(X) -> bool,
+}
 
-fn sources(t: Transition) -> Vec<State> {
+fn sources<X>(t: Transition<X>) -> Vec<State> {
     let mut vec = Vec::new();
-    match t {
-        Transition::T0(_) => (),
-        Transition::T1(t1) => vec.push(t1.source1),
-        Transition::T2(t2) => {
+    match t.t {
+        Trans::T0(_) => (),
+        Trans::T1(t1) => vec.push(t1.source1),
+        Trans::T2(t2) => {
             vec.push(t2.source1);
             vec.push(t2.source2)
         },
     };
     vec
 }
-fn target(t: Transition) -> State {
-    match t {
-        Transition::T0(t0) => t0.target,
-        Transition::T1(t1) => t1.target,
-        Transition::T2(t2) => t2.target,
+fn target<X>(t: Transition<X>) -> State {
+    match t.t {
+        Trans::T0(t0) => t0.target,
+        Trans::T1(t1) => t1.target,
+        Trans::T2(t2) => t2.target,
     }
 }
-fn eval(t: Transition) -> Ext<i32> {
-    match t {
-        Transition::T0(t0) => ext_value::apply0(t0.eval),
-        Transition::T1(t1) =>
-            ext_value::apply1(t1.eval, t1.source1.curr),
-        Transition::T2(t2) =>
-            ext_value::apply2(t2.eval, t2.source1.curr, t2.source2.curr),
+fn eval<X>(t: Transition<X>) -> Ext<i32> {
+    match t.t {
+        Trans::T0(t0) => ext_value::apply0(t0.eval),
+        Trans::T1(t1) => ext_value::apply1(t1.eval, t1.source1),
+        Trans::T2(t2) => ext_value::apply2(t2.eval, t2.source1, t2.source2),
     }
 }
+
+struct StateMachine<X> {
+    states: Vec<State>,
+    prev_states: Vec<State>,
+    transitions: Vec<Transition<X>>,
+}
+
+impl<X> StateMachine<X> {
+    // TODO
+}
+
 
 
 // struct Transition {
