@@ -4,11 +4,7 @@
 
 #![allow(dead_code)]
 
-mod ext_value;
-mod int_state_machine;
-mod state_machine;
-
-use ext_value::Ext;
+use data_transducers::ext_value::Ext;
 
 fn main() {
     println!("=== Data Transducers Library ===");

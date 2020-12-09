@@ -1,5 +1,6 @@
 # Data Transducers
-A general-purpose intermediate representation for streaming and monitoring
+
+A general-purpose intermediate representation for streaming and monitoring.
 
 ## Installation
 

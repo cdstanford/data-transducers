@@ -6,7 +6,6 @@
     represents a multiset of two or more values.
 */
 
-extern crate derive_more;
 use derive_more::{Display, From};
 use std::ops;
 

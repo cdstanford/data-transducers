@@ -8,11 +8,9 @@
     probably using traits.
 */
 
-use super::ext_value;
-use super::ext_value::Ext;
+#![allow(dead_code)]
 
-use std::i32;
-use std::vec::Vec;
+use super::ext_value::{self, Ext};
 
 type State = Ext<i32>;
 
