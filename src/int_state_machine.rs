@@ -8,8 +8,8 @@
     probably using traits.
 */
 
-use super::ext_value::Ext;
 use super::ext_value;
+use super::ext_value::Ext;
 
 use std::i32;
 use std::vec::Vec;
@@ -49,7 +49,7 @@ fn sources<'a, X>(t: &Transition<'a, X>) -> Vec<&'a State> {
         Trans::T2(t2) => {
             vec.push(t2.source1);
             vec.push(t2.source2)
-        },
+        }
     };
     vec
 }
@@ -80,12 +80,11 @@ impl<'a, X> StateMachine<'a, X> {
     fn reset_cur(&mut self) {
         for x in &mut self.states {
             *x = Ext::None;
-        };
+        }
     }
     fn set_prev(&mut self) {
-        self.prev_states[..(self.n_states)].clone_from_slice(
-            &self.states[..(self.n_states)]
-        )
+        self.prev_states[..(self.n_states)]
+            .clone_from_slice(&self.states[..(self.n_states)])
     }
     fn reset(&mut self) {
         self.reset_cur();
