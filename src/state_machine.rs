@@ -23,13 +23,13 @@ use super::ext_value::Ext;
 pub trait Statelike {
     type Val;
 
-    fn add(&self, _: &Ext<&Self::Val>) -> ();
+    fn add(&self, _: &Ext<&Self::Val>);
     fn get(&self) -> Ext<&Self::Val>;
-    fn reset(&self) -> ();
-    fn update(&self) -> ();
+    fn reset(&self);
+    fn update(&self);
 
     fn get_prev(&self) -> Ext<&Self::Val>;
-    fn set_prev(&self) -> ();
+    fn set_prev(&self);
 }
 
 /*

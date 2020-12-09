@@ -77,21 +77,21 @@ struct StateMachine<'a, X> {
 }
 
 impl<'a, X> StateMachine<'a, X> {
-    fn reset_cur(&mut self) -> () {
+    fn reset_cur(&mut self) {
         for x in &mut self.states {
             *x = Ext::None;
         };
     }
-    fn set_prev(&mut self) -> () {
-        for i in 0..(self.n_states) {
-            self.prev_states[i] = self.states[i];
-        }
+    fn set_prev(&mut self) {
+        self.prev_states[..(self.n_states)].clone_from_slice(
+            &self.states[..(self.n_states)]
+        )
     }
-    fn reset(&mut self) -> () {
+    fn reset(&mut self) {
         self.reset_cur();
         self.set_prev();
     }
-    fn update(&'a mut self, event: &X) -> () {
+    fn update(&'a mut self, _event: &X) {
         /*
             Completely wrong implementation for now:
             Just evaluate all transitions, ignoring dependencies between them.
