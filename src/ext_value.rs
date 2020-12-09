@@ -1,9 +1,9 @@
 /*
-Module implementing "extended values" Ext<T> --
-None, One (with a value in T), or Many.
+    Module implementing "extended values" Ext<T> --
+    None, One (with a value in T), or Many.
 
-Ext<T> can be thought variant of Option<T>, where Many
-represents a multiset of two or more values.
+    Ext<T> can be thought variant of Option<T>, where Many
+    represents a multiset of two or more values.
 */
 
 extern crate derive_more;

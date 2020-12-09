@@ -1,11 +1,11 @@
 /*
-Module implementing the core state machine data structure
-for data transducers, with core constructors and operations.
+    Module implementing the core state machine data structure
+    for data transducers, with core constructors and operations.
 
-First, I am implementing this where every state is
-an int, as that should be easier. Then I will try
-to adapt the code to handle arbitrary state types,
-probably using traits.
+    First, I am implementing this where every state is
+    an int, as that should be easier. Then I will try
+    to adapt the code to handle arbitrary state types,
+    probably using traits.
 */
 
 use super::ext_value::Ext;

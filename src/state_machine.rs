@@ -1,6 +1,6 @@
 /*
-Module implementing the core state machine data structure
-for data transducers, with core constructors and operations.
+    Module implementing the core state machine data structure
+    for data transducers, with core constructors and operations.
 */
 
 use super::ext_value::Ext;

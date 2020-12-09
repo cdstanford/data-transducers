@@ -1,5 +1,5 @@
 /*
-Top-level module and entrypoint for data transducers project.
+    Top-level module and entrypoint for data transducers project.
 */
 
 #![allow(dead_code)]
