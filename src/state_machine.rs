@@ -1,12 +1,19 @@
 /*
     Module implementing the core state machine data structure
-    for data transducers, with core constructors and operations.
+    for data transducers.
 */
 
-use super::ext_value::Ext;
+// use super::ext_value::Ext;
 
 /*
-    To support arbitrary types inside the machine,
+    To support arbitrary types inside the machine, we define a Transition
+    type that has a (fixed) number of source states and a target state.
+*/
+
+// TODO
+
+/*
+    OLD
     States and Transitions are implemented as traits.
     Both states and transitions are objects which have
     an Ext value and can be initialized, read, updated,
@@ -20,17 +27,17 @@ use super::ext_value::Ext;
     get_prev: get the previous value
     set_prev: update the previous value to the current one
 */
-pub trait Statelike {
-    type Val;
-
-    fn add(&self, _: &Ext<&Self::Val>);
-    fn get(&self) -> Ext<&Self::Val>;
-    fn reset(&self);
-    fn update(&self);
-
-    fn get_prev(&self) -> Ext<&Self::Val>;
-    fn set_prev(&self);
-}
+// pub trait Statelike {
+//     type Val;
+//
+//     fn add(&self, _: &Ext<&Self::Val>);
+//     fn get(&self) -> Ext<&Self::Val>;
+//     fn reset(&self);
+//     fn update(&self);
+//
+//     fn get_prev(&self) -> Ext<&Self::Val>;
+//     fn set_prev(&self);
+// }
 
 /*
     A state machine (data transducer) is then constructed
