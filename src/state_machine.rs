@@ -3,14 +3,44 @@
     for data transducers.
 */
 
-// use super::ext_value::Ext;
+use super::ext_value::{apply1, Ext};
+
+use std::cell::RefCell;
+use std::fmt::{Debug, Display};
 
 /*
-    To support arbitrary types inside the machine, we define a Transition
-    type that has a (fixed) number of source states and a target state.
+    To support arbitrary types inside the machine, we define abstract State and
+    Transition traits. These will be instantiated with states of a particular
+    type and transitions of varying arities, which each have some number of
+    input states and a single output state.
 */
 
-// TODO
+// trait State: Clone + Debug {
+//
+// }
+
+pub struct Transition<T1, T2, F> {
+    pub source: RefCell<Ext<T1>>,
+    pub target: RefCell<Ext<T2>>,
+    pub f: F,
+}
+impl<T1, T2, F> Transition<T1, T2, F>
+where
+    T1: Clone + Debug + Display,
+    T2: Clone + Debug + Display,
+    F: Fn(char, T1) -> T2,
+{
+    pub fn update(&self, ch: char) {
+        *self.target.borrow_mut() =
+            apply1(|x| (self.f)(ch, x), self.source.borrow().clone());
+        // if ch == 'a' {
+        //     *self.target.borrow_mut() = self.source.borrow().clone();
+        // } else if ch == 'b' {
+        //     *self.target.borrow_mut() = self.source.borrow().clone();
+        // }
+        println!("New target: {:?}", self.target.borrow());
+    }
+}
 
 /*
     OLD
