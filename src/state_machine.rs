@@ -7,6 +7,7 @@ use super::ext_value::{apply1, Ext};
 
 use std::cell::RefCell;
 use std::fmt::{Debug, Display};
+use std::rc::Rc;
 
 /*
     To support arbitrary types inside the machine, we define abstract State and
@@ -20,8 +21,8 @@ use std::fmt::{Debug, Display};
 // }
 
 pub struct Transition<T1, T2, F> {
-    pub source: RefCell<Ext<T1>>,
-    pub target: RefCell<Ext<T2>>,
+    pub source: Rc<RefCell<Ext<T1>>>,
+    pub target: Rc<RefCell<Ext<T2>>>,
     pub f: F,
 }
 impl<T1, T2, F> Transition<T1, T2, F>

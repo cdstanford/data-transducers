@@ -58,7 +58,7 @@ fn target<'a, X>(t: &'a mut Transition<'a, X>) -> &'a mut State {
         Trans::T2(t2) => t2.target,
     }
 }
-fn eval<'a, X>(t: &Transition<'a, X>) -> Ext<i32> {
+fn eval<X>(t: &Transition<X>) -> Ext<i32> {
     match &t.t {
         Trans::T0(t0) => ext_value::apply0(t0.eval),
         Trans::T1(t1) => ext_value::apply1(t1.eval, *t1.source1),

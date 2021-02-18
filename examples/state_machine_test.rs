@@ -7,11 +7,11 @@ use data_transducers::state_machine::Transition;
 
 use std::any::Any;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 fn main() {
-    let state1: RefCell<Ext<usize>> = RefCell::new(Ext::One(2));
-    let state2: RefCell<Ext<String>> =
-        RefCell::new(Ext::One("init".to_owned()));
+    let state1 = Rc::new(RefCell::new(Ext::One(2)));
+    let state2 = Rc::new(RefCell::new(Ext::One("init".to_owned())));
     let t = Transition {
         source: state1.clone(),
         target: state2.clone(),
@@ -28,8 +28,9 @@ fn main() {
     t.update('a');
     t.update('b');
 
-    // Doesn't work as intended -- state1 and state2 don't point to t.source
-    // and t.target
+    // This is working! Just forgot to use Rc before
+    assert_eq!(*state1.borrow(), Ext::One(2));
+    assert_eq!(*state2.borrow(), Ext::One("-".to_owned()));
     println!("New value of states: {:?} {:?}", state1, state2);
 
     let mut states: Vec<Box<dyn Any>> = Vec::new();
