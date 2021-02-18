@@ -188,14 +188,8 @@ mod tests {
     fn test_apply() {
         let x0: Ext<i32> = Ext::None;
         let x1 = Ext::One(3);
-        let x2 = Ext::One(2);
-        let x3: Ext<i32> = Ext::Many;
         assert_eq!(apply1(i32::count_ones, x0), Ext::None);
         assert_eq!(apply1(i32::count_ones, x1), Ext::One(2));
-        assert_eq!(apply2(ops::Add::add, x1, x2), Ext::One(5));
-        assert_eq!(apply2(ops::Add::add, x2, x2), Ext::One(4));
-        assert_eq!(apply2(ops::Mul::mul, x1, x3), Ext::Many);
-        assert_eq!(apply2(ops::Mul::mul, x3, x0), Ext::None);
         let y0: Ext<&str> = Ext::None;
         let y1: Ext<&str> = Ext::from("hello");
         let y2: Ext<String> = Ext::from(String::from("world"));
@@ -203,5 +197,41 @@ mod tests {
         assert_eq!(apply1(str::len, y1), Ext::One(5));
         assert_eq!(apply1(String::from, Ext::from("world")), y2);
         assert_eq!(apply1(Ext::from, Ext::One(5)), Ext::One(Ext::One(5)));
+    }
+
+    #[test]
+    fn test_apply2() {
+        let x0: Ext<i32> = Ext::None;
+        let x1 = Ext::One(3);
+        let x2 = Ext::One(2);
+        let x3: Ext<i32> = Ext::Many;
+        assert_eq!(apply2(ops::Add::add, x1, x2), Ext::One(5));
+        assert_eq!(apply2(ops::Add::add, x2, x2), Ext::One(4));
+        assert_eq!(apply2(ops::Mul::mul, x1, x3), Ext::Many);
+        assert_eq!(apply2(ops::Mul::mul, x3, x0), Ext::None);
+    }
+
+    #[test]
+    fn test_apply3() {
+        let x0: Ext<i32> = Ext::None;
+        let x1 = Ext::One(3);
+        let x2 = Ext::One(2);
+        let x3: Ext<i32> = Ext::Many;
+        let vec_3 = |x1: i32, x2: i32, x3: i32| vec![x1, x2, x3];
+        assert_eq!(apply3(vec_3, x1, x2, x1), Ext::One(vec![3, 2, 3]));
+        assert_eq!(apply3(vec_3, x1, x0, x3), Ext::None);
+        assert_eq!(apply3(vec_3, x1, x3, x1), Ext::Many);
+    }
+
+    #[test]
+    fn test_apply4() {
+        let x0: Ext<i32> = Ext::None;
+        let x1 = Ext::One(3);
+        let x2 = Ext::One(2);
+        let x3: Ext<i32> = Ext::Many;
+        let vec_4 = |x1: i32, x2: i32, x3: i32, x4: i32| vec![x1, x2, x3, x4];
+        assert_eq!(apply4(vec_4, x1, x2, x1, x1), Ext::One(vec![3, 2, 3, 3]));
+        assert_eq!(apply4(vec_4, x1, x0, x3, x1), Ext::None);
+        assert_eq!(apply4(vec_4, x1, x3, x1, x1), Ext::Many);
     }
 }
