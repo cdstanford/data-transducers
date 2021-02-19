@@ -7,13 +7,74 @@
 */
 
 use derive_more::{Display, From};
+use std::iter::FromIterator;
 use std::ops;
 
-#[derive(Debug, PartialEq, Display, From, Copy, Clone)]
+#[derive(Clone, Copy, Debug, Display, Eq, From, PartialEq)]
 pub enum Ext<T> {
     None,
     One(T),
     Many,
+}
+
+/* Default value and from/to relationships */
+
+impl<T> Default for Ext<T> {
+    fn default() -> Self {
+        Ext::None
+    }
+}
+
+impl<T> From<Option<T>> for Ext<T> {
+    fn from(opt_t: Option<T>) -> Self {
+        match opt_t {
+            None => Ext::None,
+            Some(t) => Ext::One(t),
+        }
+    }
+}
+
+impl<T> Into<Option<T>> for Ext<T> {
+    fn into(self) -> Option<T> {
+        match self {
+            Ext::One(t) => Some(t),
+            _ => None,
+        }
+    }
+}
+
+// Weirdly this doesn't work due to conflicting implementations of the trait,
+// but I think it's a compiler edge case
+// impl<T> TryInto<T> for Ext<T> {
+//     type Error = String;
+//     fn try_into(self) -> Result<T, String> {
+//         match self {
+//             Ext::One(t) => Ok(t),
+//             _ => Err("Conversion from Ext failed: not a One value"),
+//         }
+//     }
+// }
+// So we just implement .unwrap(), not as desirable though.
+impl<T> Ext<T> {
+    pub fn unwrap(self) -> T {
+        match self {
+            Ext::One(t) => t,
+            _ => panic!("Conversion from Ext failed: not a One value"),
+        }
+    }
+}
+
+impl<T> FromIterator<T> for Ext<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut iter = iter.into_iter();
+        match iter.next() {
+            None => Ext::None,
+            Some(x) => match iter.next() {
+                None => Ext::One(x),
+                Some(_) => Ext::Many,
+            },
+        }
+    }
 }
 
 /* Union operation */
