@@ -126,29 +126,15 @@ where
     Ext::One(op())
 }
 
-pub fn apply_ext1<T1, T2, F>(op: F, v1: Ext<T1>) -> Ext<T2>
-where
-    F: Fn(T1) -> Ext<T2>
-{
-    match v1 {
-        Ext::None => Ext::None,
-        Ext::One(x) => op(x),
-        Ext::Many => Ext::Many,
-    }
-}
-
 pub fn apply1<T1, T2, F>(op: F, v1: Ext<T1>) -> Ext<T2>
 where
     F: Fn(T1) -> T2,
 {
-    apply_ext1(|x| Ext::One(op(x)), v1)
-}
-
-pub fn apply_ext2<T1, T2, T3, F>(op: F, v1: Ext<T1>, v2: Ext<T2>) -> Ext<T3>
-where
-    F: Fn(T1, T2) -> Ext<T3>,
-{
-    apply_ext1(|(x, y)| op(x, y), v1 * v2)
+    match v1 {
+        Ext::None => Ext::None,
+        Ext::One(x) => Ext::One(op(x)),
+        Ext::Many => Ext::Many,
+    }
 }
 
 pub fn apply2<T1, T2, T3, F>(op: F, v1: Ext<T1>, v2: Ext<T2>) -> Ext<T3>
@@ -156,18 +142,6 @@ where
     F: Fn(T1, T2) -> T3,
 {
     apply1(|(x, y)| op(x, y), v1 * v2)
-}
-
-pub fn apply_ext3<T1, T2, T3, T4, F>(
-    op: F,
-    v1: Ext<T1>,
-    v2: Ext<T2>,
-    v3: Ext<T3>,
-) -> Ext<T4>
-where
-    F: Fn(T1, T2, T3) -> Ext<T4>,
-{
-    apply_ext1(|((x, y), z)| op(x, y, z), v1 * v2 * v3)
 }
 
 pub fn apply3<T1, T2, T3, T4, F>(
@@ -180,19 +154,6 @@ where
     F: Fn(T1, T2, T3) -> T4,
 {
     apply1(|((x, y), z)| op(x, y, z), v1 * v2 * v3)
-}
-
-pub fn apply_ext4<T1, T2, T3, T4, T5, F>(
-    op: F,
-    v1: Ext<T1>,
-    v2: Ext<T2>,
-    v3: Ext<T3>,
-    v4: Ext<T4>,
-) -> Ext<T5>
-where
-    F: Fn(T1, T2, T3, T4) -> Ext<T5>,
-{
-    apply_ext1(|(((x, y), z), t)| op(x, y, z, t), v1 * v2 * v3 * v4)
 }
 
 pub fn apply4<T1, T2, T3, T4, T5, F>(
@@ -333,39 +294,5 @@ mod tests {
         assert_eq!(apply4(vec_4, x1, x2, x1, x1), Ext::One(vec![3, 2, 3, 3]));
         assert_eq!(apply4(vec_4, x1, x0, x3, x1), Ext::None);
         assert_eq!(apply4(vec_4, x1, x3, x1, x1), Ext::Many);
-    }
-
-    #[test]
-    fn test_apply_ext() {
-        let none: Ext<i32> = Ext::None;
-        let one0 = Ext::One(0);
-        let one2 = Ext::One(2);
-        let many: Ext<i32> = Ext::Many;
-        let f1 = |x: i32| {
-            if x == 0 {
-                Ext::None
-            } else {
-                Ext::One(x)
-            }
-        };
-        let f2 = |x: i32, y: i32| Ext::One(vec![x, y]);
-        let f3 = |x: i32, y: i32, z: i32| -> Ext<i32> {
-            if x == 0 && y == 0 && z == 0 {
-                Ext::None
-            } else {
-                Ext::Many
-            }
-        };
-        assert_eq!(apply_ext1(f1, none), Ext::None);
-        assert_eq!(apply_ext1(f1, one0), Ext::None);
-        assert_eq!(apply_ext1(f1, one2), Ext::One(2));
-        assert_eq!(apply_ext1(f1, many), Ext::Many);
-        assert_eq!(apply_ext2(f2, none, many), Ext::None);
-        assert_eq!(apply_ext2(f2, one0, one2), Ext::One(vec![0, 2]));
-        assert_eq!(apply_ext2(f2, one0, many), Ext::Many);
-        assert_eq!(apply_ext3(f3, none, many, none), Ext::None);
-        assert_eq!(apply_ext3(f3, one0, one0, one0), Ext::None);
-        assert_eq!(apply_ext3(f3, one0, one2, one0), Ext::Many);
-        assert_eq!(apply_ext3(f3, one0, many, many), Ext::Many);
     }
 }
