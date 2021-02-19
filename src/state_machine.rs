@@ -3,43 +3,70 @@
     for data transducers.
 */
 
-use super::ext_value::{apply1, Ext};
+use super::ext_value::{self, Ext};
 
 use std::cell::RefCell;
 use std::fmt::{Debug, Display};
 use std::rc::Rc;
 
 /*
-    To support arbitrary types inside the machine, we define abstract State and
+    To support arbitrary types inside the machine, we define both concrete
+    State and Transition types as well as abstract State and
     Transition traits. These will be instantiated with states of a particular
     type and transitions of varying arities, which each have some number of
     input states and a single output state.
 */
 
-// trait State: Clone + Debug {
-//
-// }
+type State<T> = Rc<RefCell<Ext<T>>>;
 
-pub struct Transition<T1, T2, F> {
-    pub source: Rc<RefCell<Ext<T1>>>,
-    pub target: Rc<RefCell<Ext<T2>>>,
-    pub f: F,
+pub struct Trans1<T1, T2, F1, F2> {
+    pub source: State<T1>,
+    pub target: State<T2>,
+    pub active: F1,
+    pub action: F2,
 }
-impl<T1, T2, F> Transition<T1, T2, F>
+impl<T1, T2, F1, F2> Trans1<T1, T2, F1, F2>
 where
     T1: Clone + Debug + Display,
     T2: Clone + Debug + Display,
-    F: Fn(char, T1) -> T2,
+    F1: Fn(char) -> bool, // whether the transition is active
+    F2: Fn(char, T1) -> T2, // the effect of the transition
 {
     pub fn update(&self, ch: char) {
-        *self.target.borrow_mut() =
-            apply1(|x| (self.f)(ch, x), self.source.borrow().clone());
-        // if ch == 'a' {
-        //     *self.target.borrow_mut() = self.source.borrow().clone();
-        // } else if ch == 'b' {
-        //     *self.target.borrow_mut() = self.source.borrow().clone();
-        // }
-        println!("New target: {:?}", self.target.borrow());
+        if (self.active)(ch) {
+            *self.target.borrow_mut() = ext_value::apply1(
+                |x| (self.action)(ch, x),
+                self.source.borrow().clone(),
+            );
+            println!("New target: {:?}", self.target.borrow());
+        }
+    }
+}
+
+pub struct Trans2<T1, T2, T3, F1, F2> {
+    pub source1: State<T1>,
+    pub source2: State<T2>,
+    pub target: State<T3>,
+    pub active: F1,
+    pub action: F2,
+}
+impl<T1, T2, T3, F1, F2> Trans2<T1, T2, T3, F1, F2>
+where
+    T1: Clone + Debug + Display,
+    T2: Clone + Debug + Display,
+    T3: Clone + Debug + Display,
+    F1: Fn(char) -> bool, // whether the transition is active
+    F2: Fn(char, T1, T2) -> T3, // the effect of the transition
+{
+    pub fn update(&self, ch: char) {
+        if (self.active)(ch) {
+            *self.target.borrow_mut() = ext_value::apply2(
+                |x1, x2| (self.action)(ch, x1, x2),
+                self.source1.borrow().clone(),
+                self.source2.borrow().clone(),
+            );
+            println!("New target: {:?}", self.target.borrow());
+        }
     }
 }
 

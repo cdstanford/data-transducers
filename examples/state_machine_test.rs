@@ -3,7 +3,7 @@
 */
 
 use data_transducers::ext_value::Ext;
-use data_transducers::state_machine::Transition;
+use data_transducers::state_machine::Trans1;
 
 use std::any::Any;
 use std::cell::RefCell;
@@ -12,10 +12,11 @@ use std::rc::Rc;
 fn main() {
     let state1 = Rc::new(RefCell::new(Ext::One(2)));
     let state2 = Rc::new(RefCell::new(Ext::One("init".to_owned())));
-    let t = Transition {
+    let t = Trans1 {
         source: state1.clone(),
         target: state2.clone(),
-        f: |ch, _x| {
+        active: |_ch| true,
+        action: |ch, _x| {
             if ch == 'a' {
                 "a".to_owned()
             } else {
