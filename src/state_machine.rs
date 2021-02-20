@@ -19,6 +19,7 @@ use std::rc::Rc;
 
 type State<T> = Rc<RefCell<Ext<T>>>;
 
+#[derive(Debug)]
 pub struct Trans1<T1, T2, F1, F2> {
     pub source: State<T1>,
     pub target: State<T2>,
@@ -29,8 +30,8 @@ impl<T1, T2, F1, F2> Trans1<T1, T2, F1, F2>
 where
     T1: Clone + Debug + Display,
     T2: Clone + Debug + Display,
-    F1: Fn(char) -> bool, // whether the transition is active
-    F2: Fn(char, T1) -> T2, // the effect of the transition
+    F1: Fn(char) -> bool + Debug, // whether the transition is active
+    F2: Fn(char, T1) -> T2 + Debug, // the effect of the transition
 {
     pub fn update(&self, ch: char) {
         if (self.active)(ch) {
@@ -43,6 +44,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Trans2<T1, T2, T3, F1, F2> {
     pub source1: State<T1>,
     pub source2: State<T2>,
@@ -55,8 +57,8 @@ where
     T1: Clone + Debug + Display,
     T2: Clone + Debug + Display,
     T3: Clone + Debug + Display,
-    F1: Fn(char) -> bool, // whether the transition is active
-    F2: Fn(char, T1, T2) -> T3, // the effect of the transition
+    F1: Fn(char) -> bool + Debug, // whether the transition is active
+    F2: Fn(char, T1, T2) -> T3 + Debug, // the effect of the transition
 {
     pub fn update(&self, ch: char) {
         if (self.active)(ch) {
@@ -69,6 +71,75 @@ where
         }
     }
 }
+
+pub trait AnyState: 'static + Debug {}
+impl<T> AnyState for State<T> where T: 'static + Debug {}
+
+pub trait AnyTrans: 'static + Debug {}
+impl<T1, T2, F1, F2> AnyTrans for Trans1<T1, T2, F1, F2>
+where
+    T1: 'static + Debug,
+    T2: 'static + Debug,
+    F1: 'static + Debug,
+    F2: 'static + Debug,
+{
+}
+impl<T1, T2, T3, F1, F2> AnyTrans for Trans2<T1, T2, T3, F1, F2>
+where
+    T1: 'static + Debug,
+    T2: 'static + Debug,
+    T3: 'static + Debug,
+    F1: 'static + Debug,
+    F2: 'static + Debug,
+{
+}
+
+/************************************/
+
+#[derive(Debug)]
+pub struct DataTransducer<I, F> {
+    istate: State<I>,
+    fstate: State<F>,
+    states: Vec<Box<dyn AnyState>>,
+    transs: Vec<Box<dyn AnyTrans>>,
+}
+impl<I, F> DataTransducer<I, F>
+where
+    I: Clone + Debug + Display,
+    F: Clone + Debug + Display,
+{
+    pub fn new(istate: State<I>, fstate: State<F>) -> Self {
+        let states = Vec::new();
+        let transs = Vec::new();
+        Self { istate, fstate, states, transs }
+    }
+    pub fn add_state<S: AnyState>(&mut self, s: S) {
+        self.states.push(Box::new(s));
+    }
+    pub fn add_transition<T: AnyTrans>(&mut self, t: T) {
+        // **Precondition:** sources and target of t
+        // should be states already added to the DT
+        // (or the initial/final states)
+        self.transs.push(Box::new(t));
+    }
+
+    pub fn set_input(&mut self, i: I) -> Ext<I> {
+        // returns the old value, if any;
+        // maybe it should assert it's None instead
+        self.istate.replace(Ext::One(i))
+    }
+    pub fn get_output(&self) -> Ext<F> {
+        self.fstate.borrow().clone()
+    }
+
+    /* MAIN EVALUATION ALGORITHM */
+    // Placeholder for now
+    pub fn eval(&mut self, _ch: char) {
+        // TODO
+    }
+}
+
+/************************************/
 
 /*
     OLD
