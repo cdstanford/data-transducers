@@ -5,6 +5,5 @@
 */
 
 pub mod ext_value;
-pub mod int_state_machine;
 pub mod interface;
 pub mod state_machine;
