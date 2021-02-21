@@ -17,6 +17,38 @@ pub enum Ext<T> {
     Many,
 }
 
+/* Basic getters */
+
+impl<T> Ext<T> {
+    pub fn is_none(&self) -> bool {
+        matches!(self, Ext::None)
+    }
+    pub fn is_one(&self) -> bool {
+        matches!(self, Ext::One(_))
+    }
+    pub fn is_many(&self) -> bool {
+        matches!(self, Ext::Many)
+    }
+    pub fn get_one(&self) -> Option<&T> {
+        match self {
+            Ext::One(x) => Some(x),
+            _ => None,
+        }
+    }
+    pub fn get_one_mut(&mut self) -> Option<&mut T> {
+        match self {
+            Ext::One(x) => Some(x),
+            _ => None,
+        }
+    }
+    pub fn into_inner(self) -> Option<T> {
+        match self {
+            Ext::One(x) => Some(x),
+            _ => None,
+        }
+    }
+}
+
 /* Default value and from/to relationships */
 
 impl<T> Default for Ext<T> {
@@ -36,10 +68,7 @@ impl<T> From<Option<T>> for Ext<T> {
 
 impl<T> Into<Option<T>> for Ext<T> {
     fn into(self) -> Option<T> {
-        match self {
-            Ext::One(t) => Some(t),
-            _ => None,
-        }
+        self.into_inner()
     }
 }
 
@@ -57,13 +86,11 @@ impl<T> Into<Option<T>> for Ext<T> {
 // So we just implement .unwrap(), not as desirable though.
 impl<T> Ext<T> {
     pub fn unwrap(self) -> T {
-        match self {
-            Ext::One(t) => t,
-            _ => panic!("Conversion from Ext failed: not a One value"),
-        }
+        self.into_inner().expect("Conversion from Ext failed: not a One value")
     }
 }
 
+// .collect() from an iterator
 impl<T> FromIterator<T> for Ext<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut iter = iter.into_iter();
@@ -87,10 +114,19 @@ impl<T> ops::Add for Ext<T> {
             Ext::None => other,
             Ext::One(_) => match other {
                 Ext::None => self,
-                Ext::One(_) => Ext::Many,
-                Ext::Many => Ext::Many,
+                _ => Ext::Many,
             },
             Ext::Many => Ext::Many,
+        }
+    }
+}
+
+impl<T> ops::AddAssign for Ext<T> {
+    fn add_assign(&mut self, other: Self) {
+        if self.is_none() {
+            *self = other;
+        } else if !other.is_none() {
+            *self = Ext::Many;
         }
     }
 }
@@ -102,17 +138,27 @@ impl<T1, T2> ops::Mul<Ext<T2>> for Ext<T1> {
 
     fn mul(self, rhs: Ext<T2>) -> Ext<(T1, T2)> {
         match self {
-            Ext::None => Ext::None,
             Ext::One(x) => match rhs {
-                Ext::None => Ext::None,
                 Ext::One(y) => Ext::One((x, y)),
+                Ext::None => Ext::None,
                 Ext::Many => Ext::Many,
             },
+            Ext::None => Ext::None,
             Ext::Many => match rhs {
                 Ext::None => Ext::None,
-                Ext::One(_) => Ext::Many,
-                Ext::Many => Ext::Many,
+                _ => Ext::Many,
             },
+        }
+    }
+}
+
+impl<T> ops::MulAssign<Ext<()>> for Ext<T> {
+    #[allow(clippy::suspicious_op_assign_impl)]
+    fn mul_assign(&mut self, rhs: Ext<()>) {
+        if rhs.is_none() {
+            *self = Ext::None;
+        } else if rhs.is_many() && self.is_one() {
+            *self = Ext::Many;
         }
     }
 }

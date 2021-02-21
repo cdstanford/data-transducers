@@ -100,7 +100,7 @@ trait Transducer {
                 RInput::Item(item) => {
                     let mut out = Ext::None;
                     for transducer in transducers.iter_mut() {
-                        out = out + transducer.update(item.clone());
+                        out += transducer.update(item.clone());
                     }
                     out
                 }
