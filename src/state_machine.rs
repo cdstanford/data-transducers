@@ -28,10 +28,10 @@ pub struct Trans1<T1, T2, F1, F2> {
 }
 impl<T1, T2, F1, F2> Trans1<T1, T2, F1, F2>
 where
-    T1: Clone + Debug + Display,
-    T2: Clone + Debug + Display,
-    F1: Fn(char) -> bool + Debug, // whether the transition is active
-    F2: Fn(char, T1) -> T2 + Debug, // the effect of the transition
+    T1: Clone,
+    T2: Clone + Debug,
+    F1: Fn(char) -> bool, // whether the transition is active
+    F2: Fn(char, T1) -> T2, // the effect of the transition
 {
     pub fn update(&self, ch: char) {
         if (self.active)(ch) {
@@ -54,11 +54,11 @@ pub struct Trans2<T1, T2, T3, F1, F2> {
 }
 impl<T1, T2, T3, F1, F2> Trans2<T1, T2, T3, F1, F2>
 where
-    T1: Clone + Debug + Display,
-    T2: Clone + Debug + Display,
-    T3: Clone + Debug + Display,
-    F1: Fn(char) -> bool + Debug, // whether the transition is active
-    F2: Fn(char, T1, T2) -> T3 + Debug, // the effect of the transition
+    T1: Clone,
+    T2: Clone,
+    T3: Clone + Debug,
+    F1: Fn(char) -> bool, // whether the transition is active
+    F2: Fn(char, T1, T2) -> T3, // the effect of the transition
 {
     pub fn update(&self, ch: char) {
         if (self.active)(ch) {
