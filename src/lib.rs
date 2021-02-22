@@ -6,4 +6,5 @@
 
 pub mod ext_value;
 pub mod interface;
+pub mod qre;
 pub mod state_machine;

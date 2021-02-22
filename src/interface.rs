@@ -11,6 +11,7 @@
 */
 
 use super::ext_value::Ext;
+use std::fmt::Debug;
 use std::iter;
 
 /*
@@ -24,6 +25,7 @@ use std::iter;
     is relevant in the context of "restartable" transducers which are more
     composable.
 */
+#[derive(Copy, Clone, Debug)]
 pub enum RInput<I, D> {
     Restart(I),
     Item(D),
@@ -91,7 +93,8 @@ pub trait Transducer<I, D, O> {
     // Process an input stream with "restart" events, processing such
     // events by spawning many transducers
     // Doesn't use &self for any computation; instead
-    // uses .spawn_empty() to get an initial state for each new transducer
+    // uses .spawn_empty() to get an initial state for each new transducer.
+    // This is used mainly for testing in check_restartability_for below.
     fn process_rstream_multi<'a, Strm>(
         &'a self,
         mut strm: Strm,
@@ -99,20 +102,27 @@ pub trait Transducer<I, D, O> {
     where
         Strm: Iterator<Item = RInput<I, D>> + 'a,
         Self: Sized,
-        D: Clone,
+        I: Debug,
+        D: Clone + Debug,
+        O: Debug,
     {
         let mut transducers: Vec<Self> = Vec::new();
         Box::new(iter::from_fn(move || {
             strm.next().map(|item| match item {
                 RInput::Restart(i) => {
+                    println!("Restart: {:?}", i);
                     transducers.push(self.spawn_empty());
-                    transducers.last_mut().unwrap().init(i)
+                    let out = transducers.last_mut().unwrap().init(i);
+                    println!("--> output: {:?}", out);
+                    out
                 }
                 RInput::Item(item) => {
+                    println!("Item: {:?}", item);
                     let mut out = Ext::None;
                     for transducer in transducers.iter_mut() {
                         out += transducer.update(item.clone());
                     }
+                    println!("--> output: {:?}", out);
                     out
                 }
             })
@@ -125,8 +135,9 @@ pub trait Transducer<I, D, O> {
     where
         Strm: Iterator<Item = RInput<I, D>> + Clone + 'a,
         Self: Sized,
-        D: Clone,
-        O: Eq,
+        I: Debug,
+        D: Clone + Debug,
+        O: Debug + Eq,
     {
         if self.is_restartable() {
             let mut self1 = self.spawn_empty();
