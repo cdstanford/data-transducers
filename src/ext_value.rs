@@ -218,11 +218,9 @@ where
 /* ========== TESTS ========== */
 
 #[cfg(test)]
-use std::i32;
-
-#[cfg(test)]
 mod tests {
     use super::*;
+    use std::i32;
 
     #[test]
     fn test_union() {
