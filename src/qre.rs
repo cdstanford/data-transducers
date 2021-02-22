@@ -33,6 +33,13 @@ impl<I1, I2, O, F: Fn(I1, I2) -> O + Clone> FnClone2<I1, I2, O> for F {}
     QRE epsilon
 
     Base construct which processes no data and immediately produces output
+
+    Derived constructs:
+    - epsilon_iden
+      Epsilon which is the identity function.
+      This is the identity for QRE concatenation.
+    - epsilon_const
+      Epsilon which produces a constant output.
 */
 
 pub struct Epsilon<I, D, O, F>
@@ -49,6 +56,15 @@ where
     F: FnClone1<I, O>,
 {
     Epsilon { action, ph_i: PhantomData, ph_d: PhantomData, ph_o: PhantomData }
+}
+pub fn epsilon_iden<I, D>() -> Epsilon<I, D, I, impl FnClone1<I, I>> {
+    epsilon(|i| i)
+}
+pub fn epsilon_const<I, D, O>(out: O) -> Epsilon<I, D, O, impl FnClone1<I, O>>
+where
+    O: Clone,
+{
+    epsilon(move |_i| out.clone())
 }
 
 impl<I, D, O, F> Clone for Epsilon<I, D, O, F>
@@ -95,6 +111,15 @@ where
 
     Base construct which processes a single data item and then
     produces output only if the data item satisfies a guard
+
+    Derived constructs:
+    - atom_univ
+      Atom with no guard: applies some function to the input item
+    - atom_guard
+      Atom with no action: outputs the input item if it matches the guard
+    - atom_iden
+      Atom with no action or guard: just matches one item (any item) and
+      outputs it.
 */
 
 pub struct Atom<I, D, O, G, F>
@@ -115,6 +140,24 @@ where
 {
     let istate = Ext::None;
     Atom { guard, action, istate, ph_d: PhantomData, ph_o: PhantomData }
+}
+pub fn atom_univ<I, D, O, F>(
+    action: F,
+) -> Atom<I, D, O, impl FnClone1<D, bool>, F>
+where
+    F: FnClone2<I, D, O>,
+{
+    atom(|_d| true, action)
+}
+pub fn atom_guard<D, G>(guard: G) -> Atom<(), D, D, G, impl FnClone2<(), D, D>>
+where
+    G: FnClone1<D, bool>,
+{
+    atom(guard, |(), d| d)
+}
+pub fn atom_iden<D>(
+) -> Atom<(), D, D, impl FnClone1<D, bool>, impl FnClone2<(), D, D>> {
+    atom(|_d| true, |(), d| d)
 }
 
 impl<I, D, O, G, F> Clone for Atom<I, D, O, G, F>
