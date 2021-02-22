@@ -1,5 +1,13 @@
 /*
     Interface for data transducer implementations.
+
+    TYPES THROUGHOUT THE FILE:
+    - I: The type of initial input to a transducer
+    - D: The type of the input data stream (updates to the transducer)
+    - O: The type of output data for the transducer produced after each update
+    Also:
+    - RInput<I, D>: An input item which could also be a "restart event"
+    - Strm: an iterator over D items or RInput<I, D> items
 */
 
 use super::ext_value::Ext;
@@ -16,24 +24,17 @@ use std::iter;
     is relevant in the context of "restartable" transducers which are more
     composable.
 */
-pub enum RInput<Init, Input> {
-    Restart(Init),
-    Item(Input),
+pub enum RInput<I, D> {
+    Restart(I),
+    Item(D),
 }
 
-trait Transducer<Init, Input, Output> {
-    /*
-        TYPES:
-        Init: initial input
-        Input: input data stream
-        Output: output produced for each input
-    */
-
+pub trait Transducer<I, D, O> {
     /* FUNCTIONALITY TO IMPLEMENT */
 
     // Computation
-    fn init(&mut self, i: Init) -> Ext<Output>;
-    fn update(&mut self, item: Input) -> Ext<Output>;
+    fn init(&mut self, i: I) -> Ext<O>;
+    fn update(&mut self, item: D) -> Ext<O>;
     // Reset all computation back to the original state
     fn reset(&mut self);
     // Spawn an empty copy of the transducer: one that is in the initial
@@ -52,16 +53,16 @@ trait Transducer<Init, Input, Output> {
     /* DERIVED FUNCTIONALITY */
 
     // Process an input stream (plus an initial value)
-    fn process_stream<'a, I>(
+    fn process_stream<'a, Strm>(
         &'a mut self,
-        i: Init,
-        mut strm: I,
-    ) -> Box<dyn Iterator<Item = Ext<Output>> + 'a>
+        i: I,
+        mut strm: Strm,
+    ) -> Box<dyn Iterator<Item = Ext<O>> + 'a>
     // Sad output type because 'impl Iterator' is not allowed here :(
     where
-        I: Iterator<Item = Input> + 'a,
+        Strm: Iterator<Item = D> + 'a,
         Self: Sized,
-        Output: 'a,
+        O: 'a,
     {
         let y0 = self.init(i);
         Box::new(iter::once(y0).chain(iter::from_fn(move || {
@@ -71,12 +72,12 @@ trait Transducer<Init, Input, Output> {
 
     // Process an input stream with "restart" events (initial values),
     // processing such events using one transducer and .init()
-    fn process_rstream_single<'a, I>(
+    fn process_rstream_single<'a, Strm>(
         &'a mut self,
-        mut strm: I,
-    ) -> Box<dyn Iterator<Item = Ext<Output>> + 'a>
+        mut strm: Strm,
+    ) -> Box<dyn Iterator<Item = Ext<O>> + 'a>
     where
-        I: Iterator<Item = RInput<Init, Input>> + 'a,
+        Strm: Iterator<Item = RInput<I, D>> + 'a,
         Self: Sized + 'a,
     {
         Box::new(iter::from_fn(move || {
@@ -91,14 +92,14 @@ trait Transducer<Init, Input, Output> {
     // events by spawning many transducers
     // Doesn't use &self for any computation; instead
     // uses .spawn_empty() to get an initial state for each new transducer
-    fn process_rstream_multi<'a, I>(
+    fn process_rstream_multi<'a, Strm>(
         &'a self,
-        mut strm: I,
-    ) -> Box<dyn Iterator<Item = Ext<Output>> + 'a>
+        mut strm: Strm,
+    ) -> Box<dyn Iterator<Item = Ext<O>> + 'a>
     where
-        I: Iterator<Item = RInput<Init, Input>> + 'a,
+        Strm: Iterator<Item = RInput<I, D>> + 'a,
         Self: Sized,
-        Input: Clone,
+        D: Clone,
     {
         let mut transducers: Vec<Self> = Vec::new();
         Box::new(iter::from_fn(move || {
@@ -120,12 +121,12 @@ trait Transducer<Init, Input, Output> {
 
     // Having defined the above, now we can write a function which tests whether
     // the restartability property correctly holds
-    fn check_restartability_for<'a, I>(&'a self, strm: I)
+    fn check_restartability_for<'a, Strm>(&'a self, strm: Strm)
     where
-        I: Iterator<Item = RInput<Init, Input>> + Clone + 'a,
+        Strm: Iterator<Item = RInput<I, D>> + Clone + 'a,
         Self: Sized,
-        Input: Clone,
-        Output: Eq,
+        D: Clone,
+        O: Eq,
     {
         if self.is_restartable() {
             let mut self1 = self.spawn_empty();
