@@ -34,22 +34,34 @@ impl<I1, I2, O, F: Fn(I1, I2) -> O + Clone> FnClone2<I1, I2, O> for F {}
     Base construct which processes no data and immediately produces output
 */
 
-pub struct Epsilon<I, D, O, F: FnClone1<I, O>> {
+pub struct Epsilon<I, D, O, F>
+where
+    F: FnClone1<I, O>,
+{
     action: F,
     ph_i: PhantomData<I>,
     ph_d: PhantomData<D>,
     ph_o: PhantomData<O>,
 }
-pub fn epsilon<I, D, O, F: FnClone1<I, O>>(action: F) -> Epsilon<I, D, O, F> {
+pub fn epsilon<I, D, O, F>(action: F) -> Epsilon<I, D, O, F>
+where
+    F: FnClone1<I, O>,
+{
     Epsilon { action, ph_i: PhantomData, ph_d: PhantomData, ph_o: PhantomData }
 }
 
-impl<I, D, O, F: FnClone1<I, O>> Clone for Epsilon<I, D, O, F> {
+impl<I, D, O, F> Clone for Epsilon<I, D, O, F>
+where
+    F: FnClone1<I, O>,
+{
     fn clone(&self) -> Self {
         epsilon(self.action.clone())
     }
 }
-impl<I, D, O, F: FnClone1<I, O>> Transducer<I, D, O> for Epsilon<I, D, O, F> {
+impl<I, D, O, F> Transducer<I, D, O> for Epsilon<I, D, O, F>
+where
+    F: FnClone1<I, O>,
+{
     fn init(&mut self, i: I) -> Ext<O> {
         Ext::One((self.action)(i))
     }
@@ -92,10 +104,11 @@ where
     ph_d: PhantomData<D>,
     ph_o: PhantomData<O>,
 }
-pub fn atom<I, D, O, G: FnClone1<D, bool>, F: FnClone2<I, D, O>>(
-    guard: G,
-    action: F,
-) -> Atom<I, D, O, G, F> {
+pub fn atom<I, D, O, G, F>(guard: G, action: F) -> Atom<I, D, O, G, F>
+where
+    G: FnClone1<D, bool>,
+    F: FnClone2<I, D, O>,
+{
     let istate = Ext::None;
     Atom { guard, action, istate, ph_d: PhantomData, ph_o: PhantomData }
 }
@@ -207,6 +220,74 @@ where
 }
 
 /*
+    QRE transducer top-level wrapper
+
+    For now, all this does is saves the number of states, number of transitions,
+    and restartability as this is more efficient than recomputing them all the
+    time.
+*/
+pub struct TopWrapper<I, D, O, M>
+where
+    M: Transducer<I, D, O>,
+{
+    m: M,
+    ph_i: PhantomData<I>,
+    ph_d: PhantomData<D>,
+    ph_o: PhantomData<O>,
+    restartable: bool,
+    n_states: usize,
+    n_transs: usize,
+}
+pub fn top<I, D, O, M>(m: M) -> TopWrapper<I, D, O, M>
+where
+    M: Transducer<I, D, O>,
+{
+    let restartable = m.is_restartable();
+    let n_states = m.n_states();
+    let n_transs = m.n_transs();
+    TopWrapper {
+        m,
+        ph_i: PhantomData,
+        ph_d: PhantomData,
+        ph_o: PhantomData,
+        restartable,
+        n_states,
+        n_transs,
+    }
+}
+impl<I, D, O, M> Clone for TopWrapper<I, D, O, M>
+where
+    M: Transducer<I, D, O>,
+{
+    fn clone(&self) -> Self {
+        top(self.m.clone())
+    }
+}
+impl<I, D, O, M> Transducer<I, D, O> for TopWrapper<I, D, O, M>
+where
+    M: Transducer<I, D, O>,
+{
+    fn init(&mut self, i: I) -> Ext<O> {
+        self.m.init(i)
+    }
+    fn update(&mut self, item: D) -> Ext<O> {
+        self.m.update(item)
+    }
+    fn reset(&mut self) {
+        self.m.reset();
+    }
+    fn is_restartable(&self) -> bool {
+        self.restartable
+    }
+    fn n_states(&self) -> usize {
+        self.n_states
+    }
+    fn n_transs(&self) -> usize {
+        self.n_transs
+    }
+}
+
+/*
     Unit Tests
 */
 
@@ -214,6 +295,7 @@ where
 mod tests {
     use super::*;
     use crate::interface::RInput;
+    use std::fmt::Debug;
 
     const EX_RSTRM_1: &[RInput<i32, char>] = &[
         RInput::Item('a'),
@@ -243,6 +325,26 @@ mod tests {
 
     const EX_RSTRMS: &[&[RInput<i32, char>]] =
         &[EX_RSTRM_1, EX_RSTRM_2, EX_RSTRM_3, EX_RSTRM_4, EX_RSTRM_5];
+
+    fn test_equiv<O, M1, M2>(mut m1: M1, mut m2: M2)
+    where
+        M1: Transducer<i32, char, O>,
+        M2: Transducer<i32, char, O>,
+        O: Debug + PartialEq,
+    {
+        // Try to test if two transducers are the same
+        assert_eq!(m1.is_restartable(), m2.is_restartable());
+        assert_eq!(m1.n_states(), m2.n_states());
+        assert_eq!(m1.n_transs(), m2.n_transs());
+        for rstrm in EX_RSTRMS {
+            let rstrm1 = rstrm.iter().cloned();
+            let rstrm2 = rstrm.iter().cloned();
+            assert_eq!(
+                m1.process_rstream_single(rstrm1).collect::<Vec<Ext<O>>>(),
+                m2.process_rstream_single(rstrm2).collect::<Vec<Ext<O>>>(),
+            );
+        }
+    }
 
     #[test]
     fn test_epsilon() {
@@ -334,5 +436,21 @@ mod tests {
     #[test]
     fn test_union_restartable() {
         // TODO
+    }
+
+    #[test]
+    fn test_top_wrapper() {
+        let m1 = epsilon(|i: i32| i + 2);
+        let m2 = atom(|ch: char| ch == 'a', |i, _ch| i + 3);
+        let m3 = union(m1.clone(), m2.clone());
+        let m4 = union(top(m1.clone()), top(top(m2.clone())));
+        let t1 = top(m1.clone());
+        let t2 = top(m2.clone());
+        let t3 = top(m3.clone());
+        let t4 = top(m4.clone());
+        test_equiv(m1, t1);
+        test_equiv(m2, t2);
+        test_equiv(m3, t3);
+        test_equiv(m4, t4);
     }
 }
