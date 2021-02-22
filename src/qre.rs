@@ -35,9 +35,11 @@ impl<I1, I2, O, F: Fn(I1, I2) -> O + Clone> FnClone2<I1, I2, O> for F {}
     Base construct which processes no data and immediately produces output
 
     Derived constructs:
+
     - epsilon_iden
       Epsilon which is the identity function.
       This is the identity for QRE concatenation.
+
     - epsilon_const
       Epsilon which produces a constant output.
 */
@@ -113,10 +115,13 @@ where
     produces output only if the data item satisfies a guard
 
     Derived constructs:
+
     - atom_univ
       Atom with no guard: applies some function to the input item
+
     - atom_guard
       Atom with no action: outputs the input item if it matches the guard
+
     - atom_iden
       Atom with no action or guard: just matches one item (any item) and
       outputs it.
@@ -468,7 +473,7 @@ where
     loop (result of .update() feeds back in as .init()).
 */
 
-pub struct Iter<X, D, M>
+pub struct Iterate<X, D, M>
 where
     M: Transducer<X, D, X>,
 {
@@ -485,7 +490,7 @@ where
     loopy: Option<bool>,
     ph_d: PhantomData<D>,
 }
-pub fn iter<X, D, M>(m: M) -> Iter<X, D, M>
+pub fn iterate<X, D, M>(m: M) -> Iterate<X, D, M>
 where
     M: Transducer<X, D, X>,
 {
@@ -493,10 +498,10 @@ where
     assert!(m.is_restartable());
     let istate = Ext::None;
     let loopy = None;
-    Iter { m, istate, loopy, ph_d: PhantomData }
+    Iterate { m, istate, loopy, ph_d: PhantomData }
 }
 
-impl<X, D, M> Clone for Iter<X, D, M>
+impl<X, D, M> Clone for Iterate<X, D, M>
 where
     X: Clone,
     M: Transducer<X, D, X>,
@@ -505,10 +510,10 @@ where
         let m = self.m.clone();
         let istate = self.istate.clone();
         let loopy = self.loopy;
-        Iter { m, istate, loopy, ph_d: PhantomData }
+        Iterate { m, istate, loopy, ph_d: PhantomData }
     }
 }
-impl<X, D, M> Transducer<X, D, X> for Iter<X, D, M>
+impl<X, D, M> Transducer<X, D, X> for Iterate<X, D, M>
 where
     X: Clone + Debug + Eq,
     D: Clone,
@@ -595,22 +600,133 @@ where
 }
 
 /*
-    QRE repeated stream
+    QRE aggregate (aka "prefix sum")
 
-    Return the same item forever.
-    Allows also returning a different item on init if desired.
-    Assumes init is only called once (this allows the implementation
-    to satisfy restartability).
+    Each time the sub-transducer matches, apply a 'sum' function
+    to get the new aggregate and produce it as output. Sum can be any abstract
+    sequential function Z x Y -> Z; it doesn't need to be commutative or
+    associative.
 
-    TODO
+    This transducer is not restartable because it is not in general possible
+    to store all aggregates of several computations simultaneously using
+    a finite number of state variables.
+    So, .init() should be called once at the start of computation; if it is
+    not called or called multiple times (or called with Ext::Many), the
+    behavior of the implementation may not be what is desired or even
+    anything reasonable.
+    It is possible to be restartable in some special cases, in particular
+    if the sub-transducer matches on all input streams, but we do not
+    currently detect these cases.
 */
 
-/*
-    QRE prefix sum
+pub struct Aggregate<D, X, Y, Z, M, F>
+where
+    M: Transducer<X, D, Y>,
+    F: FnClone2<Z, Y, Z>,
+{
+    m: M,
+    agg_fun: F,
+    // The most recently produced aggregate
+    agg: Ext<Z>,
+    ph_d: PhantomData<D>,
+    ph_x: PhantomData<X>,
+    ph_y: PhantomData<Y>,
+}
+pub fn aggregate<D, X, Y, Z, M, F>(
+    m: M,
+    agg_fun: F,
+) -> Aggregate<D, X, Y, Z, M, F>
+where
+    M: Transducer<X, D, Y>,
+    F: FnClone2<Z, Y, Z>,
+{
+    Aggregate {
+        m,
+        agg_fun,
+        agg: Ext::None,
+        ph_d: PhantomData,
+        ph_x: PhantomData,
+        ph_y: PhantomData,
+    }
+}
 
-    Assuming a sub-transducer which matches initially and on every input item,
-    compute all prefix sums ('sum' of the first n items), where sum can be
-    any abstract sequential function.
+impl<D, X, Y, Z, M, F> Aggregate<D, X, Y, Z, M, F>
+where
+    Z: Clone,
+    M: Transducer<X, D, Y>,
+    F: FnClone2<Z, Y, Z>,
+{
+    // Auxiliary function
+    // Update the aggregate and return the new result (if any)
+    fn update_agg(&mut self, y: Ext<Y>) -> Ext<Z> {
+        if y.is_none() {
+            Ext::None
+        } else {
+            let mut tmp = Ext::None;
+            mem::swap(&mut tmp, &mut self.agg);
+            self.agg = ext_value::apply2(&self.agg_fun, tmp, y);
+            self.agg.clone()
+        }
+    }
+}
+impl<D, X, Y, Z, M, F> Clone for Aggregate<D, X, Y, Z, M, F>
+where
+    Z: Clone,
+    M: Transducer<X, D, Y>,
+    F: FnClone2<Z, Y, Z>,
+{
+    fn clone(&self) -> Self {
+        let mut result = aggregate(self.m.clone(), self.agg_fun.clone());
+        result.agg = self.agg.clone();
+        result
+    }
+}
+impl<D, X, Y, Z, M, F> Transducer<(X, Z), D, Z> for Aggregate<D, X, Y, Z, M, F>
+where
+    Z: Clone,
+    M: Transducer<X, D, Y>,
+    F: FnClone2<Z, Y, Z>,
+{
+    fn init(&mut self, i: Ext<(X, Z)>) -> Ext<Z> {
+        let (x, z) = i.split(|(x, z)| (x, z));
+        let y = self.m.init(x);
+        self.agg += z;
+        self.update_agg(y)
+    }
+    fn update(&mut self, item: D) -> Ext<Z> {
+        let y = self.m.update(item);
+        self.update_agg(y)
+    }
+    fn reset(&mut self) {
+        self.m.reset();
+        self.agg = Ext::None;
+    }
+
+    fn is_epsilon(&self) -> bool {
+        self.m.is_epsilon()
+    }
+    fn is_restartable(&self) -> bool {
+        false
+    }
+    fn n_states(&self) -> usize {
+        self.m.n_states() + 1
+    }
+    fn n_transs(&self) -> usize {
+        self.m.n_transs() + 1
+    }
+}
+
+/*
+    QRE additional derived constructs
+
+    - repeat
+      Repeat a constant item initially and on every update
+      (In case multiple .inits() or .init(Ext::Many), obeys restartability
+      semantics)
+
+    - apply
+      Apply a function to the outputs of two transducers.
+      (This is parcomp followed by an epsilon.)
 
     TODO
 */
@@ -857,29 +973,20 @@ mod tests {
     }
 
     #[test]
-    fn test_iter() {
+    fn test_iterate() {
         // TODO
     }
     #[test]
-    fn test_iter_restartable() {
-        // TODO
-    }
-
-    #[test]
-    fn test_repeat() {
-        // TODO
-    }
-    #[test]
-    fn test_repeat_restartable() {
+    fn test_iterate_restartable() {
         // TODO
     }
 
     #[test]
-    fn test_prefsum() {
+    fn test_aggregate() {
         // TODO
     }
     #[test]
-    fn test_prefsum_restartable() {
+    fn test_aggregate_restartable() {
         // TODO
     }
 

@@ -47,6 +47,19 @@ impl<T> Ext<T> {
             _ => None,
         }
     }
+    pub fn split<T1, T2, F>(self, f: F) -> (Ext<T1>, Ext<T2>)
+    where
+        F: FnOnce(T) -> (T1, T2),
+    {
+        match self {
+            Ext::None => (Ext::None, Ext::None),
+            Ext::One(x) => {
+                let (x1, x2) = f(x);
+                (Ext::One(x1), Ext::One(x2))
+            }
+            Ext::Many => (Ext::Many, Ext::Many),
+        }
+    }
 }
 
 /* Default value and from/to relationships */
