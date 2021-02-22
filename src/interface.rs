@@ -103,7 +103,7 @@ pub trait Transducer<I, D, O>: Clone {
     // events by spawning many transducers
     // Doesn't use &self for any computation; instead
     // uses .spawn_empty() to get an initial state for each new transducer.
-    // This is used mainly for testing in check_restartability_for below.
+    // This is used mainly for testing in restartability_holds_for below.
     fn process_rstream_multi<'a, Strm>(
         &'a self,
         mut strm: Strm,
@@ -139,8 +139,8 @@ pub trait Transducer<I, D, O>: Clone {
     }
 
     // Having defined the above, now we can write a function which tests whether
-    // the restartability property correctly holds
-    fn check_restartability_for<'a, Strm>(&'a self, strm: Strm)
+    // the restartability property holds on a given input stream
+    fn restartability_holds_for<'a, Strm>(&'a self, strm: Strm) -> bool
     where
         Strm: Iterator<Item = RInput<I, D>> + Clone + 'a,
         Self: Sized,
@@ -148,17 +148,10 @@ pub trait Transducer<I, D, O>: Clone {
         D: Clone + Debug,
         O: Debug + Eq,
     {
-        if self.is_restartable() {
-            let mut self1 = self.spawn_empty();
-            let strm1 = strm.clone();
-            let single_out = self1.process_rstream_single(strm1);
-            let multi_out = self.process_rstream_multi(strm);
-            assert!(single_out.eq(multi_out));
-        } else {
-            eprintln!(
-                "Warning: tried to check restartability for \
-                non-restartable transducer"
-            );
-        }
+        let mut self1 = self.spawn_empty();
+        let strm1 = strm.clone();
+        let single_out = self1.process_rstream_single(strm1);
+        let multi_out = self.process_rstream_multi(strm);
+        single_out.eq(multi_out)
     }
 }

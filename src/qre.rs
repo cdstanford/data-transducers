@@ -220,6 +220,84 @@ where
 }
 
 /*
+    QRE Parallel Composition
+
+    Processes the input stream and produces an ordered pair
+    of the two results.
+*/
+pub struct ParComp<I, D, O1, O2, M1, M2>
+where
+    M1: Transducer<I, D, O1>,
+    M2: Transducer<I, D, O2>,
+{
+    m1: M1,
+    m2: M2,
+    ph_i: PhantomData<I>,
+    ph_d: PhantomData<D>,
+    ph_o1: PhantomData<O1>,
+    ph_o2: PhantomData<O2>,
+}
+pub fn parcomp<I, D, O1, O2, M1, M2>(
+    m1: M1,
+    m2: M2,
+) -> ParComp<I, D, O1, O2, M1, M2>
+where
+    M1: Transducer<I, D, O1>,
+    M2: Transducer<I, D, O2>,
+{
+    ParComp {
+        m1,
+        m2,
+        ph_i: PhantomData,
+        ph_d: PhantomData,
+        ph_o1: PhantomData,
+        ph_o2: PhantomData,
+    }
+}
+
+impl<I, D, O1, O2, M1, M2> Clone for ParComp<I, D, O1, O2, M1, M2>
+where
+    M1: Transducer<I, D, O1>,
+    M2: Transducer<I, D, O2>,
+{
+    fn clone(&self) -> Self {
+        parcomp(self.m1.clone(), self.m2.clone())
+    }
+}
+impl<I, D, O1, O2, M1, M2> Transducer<I, D, (O1, O2)>
+    for ParComp<I, D, O1, O2, M1, M2>
+where
+    I: Clone,
+    D: Clone,
+    M1: Transducer<I, D, O1>,
+    M2: Transducer<I, D, O2>,
+{
+    fn init(&mut self, i: I) -> Ext<(O1, O2)> {
+        let i2 = i.clone();
+        self.m1.init(i) * self.m2.init(i2)
+    }
+    fn update(&mut self, item: D) -> Ext<(O1, O2)> {
+        let item2 = item.clone();
+        self.m1.update(item) * self.m2.update(item2)
+    }
+    fn reset(&mut self) {
+        self.m1.reset();
+        self.m2.reset();
+    }
+    fn is_restartable(&self) -> bool {
+        // Requires checking if the language of the two transducers agrees!
+        // Needs more infrastructure to encode and analyze regular languages.
+        unimplemented!()
+    }
+    fn n_states(&self) -> usize {
+        self.m1.n_states() + self.m2.n_states()
+    }
+    fn n_transs(&self) -> usize {
+        self.m1.n_transs() + self.m2.n_transs()
+    }
+}
+
+/*
     QRE transducer top-level wrapper
 
     For now, all this does is saves the number of states, number of transitions,
@@ -382,7 +460,7 @@ mod tests {
     fn test_epsilon_restartable() {
         let m1 = epsilon(|i: i32| i * 2);
         for rstrm in EX_RSTRMS {
-            m1.check_restartability_for(rstrm.iter().cloned());
+            assert!(m1.restartability_holds_for(rstrm.iter().cloned()));
         }
     }
 
@@ -419,9 +497,9 @@ mod tests {
         );
         let m3 = atom(|_ch| true, |i, _ch| i + 3);
         for rstrm in EX_RSTRMS {
-            m1.check_restartability_for(rstrm.iter().cloned());
-            m2.check_restartability_for(rstrm.iter().cloned());
-            m3.check_restartability_for(rstrm.iter().cloned());
+            assert!(m1.restartability_holds_for(rstrm.iter().cloned()));
+            assert!(m2.restartability_holds_for(rstrm.iter().cloned()));
+            assert!(m3.restartability_holds_for(rstrm.iter().cloned()));
         }
     }
 
