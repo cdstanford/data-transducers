@@ -409,6 +409,36 @@ where
 }
 
 /*
+    QRE iteration
+
+    Parse the input stream as a sequence of matches, and apply the
+    sub-transducer to each match.
+
+    TODO
+*/
+
+/*
+    QRE repeated stream
+
+    Return the same item forever.
+    Allows also returning a different item on init if desired.
+    Assumes init is only called once (this allows the implementation
+    to satisfy restartability).
+
+    TODO
+*/
+
+/*
+    QRE prefix sum
+
+    Assuming a sub-transducer which matches initially and on every input item,
+    compute all prefix sums ('sum' of the first n items), where sum can be
+    any abstract sequential function.
+
+    TODO
+*/
+
+/*
     QRE transducer top-level wrapper
 
     For now, all this does is save the number of states, number of transitions,
@@ -642,15 +672,6 @@ mod tests {
     }
 
     #[test]
-    fn test_prefsum() {
-        // TODO
-    }
-    #[test]
-    fn test_prefsum_restartable() {
-        // TODO
-    }
-
-    #[test]
     fn test_concat() {
         // TODO
     }
@@ -665,6 +686,24 @@ mod tests {
     }
     #[test]
     fn test_iter_restartable() {
+        // TODO
+    }
+
+    #[test]
+    fn test_repeat() {
+        // TODO
+    }
+    #[test]
+    fn test_repeat_restartable() {
+        // TODO
+    }
+
+    #[test]
+    fn test_prefsum() {
+        // TODO
+    }
+    #[test]
+    fn test_prefsum_restartable() {
         // TODO
     }
 
