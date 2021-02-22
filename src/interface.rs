@@ -31,18 +31,16 @@ pub enum RInput<I, D> {
     Item(D),
 }
 
-pub trait Transducer<I, D, O> {
+pub trait Transducer<I, D, O>: Clone {
     /* FUNCTIONALITY TO IMPLEMENT */
 
     // Computation
+    // init: record an initial value for the computation (or a restart)
+    // update: process an input data item
+    // reset: restore the transducer to its original state
     fn init(&mut self, i: I) -> Ext<O>;
     fn update(&mut self, item: D) -> Ext<O>;
-    // Reset all computation back to the original state
     fn reset(&mut self);
-    // Spawn an empty copy of the transducer: one that is in the initial
-    // state and prior to any .init() updates
-    // If Self: Clone, this should be roughly equivalent to self.clone().reset()
-    fn spawn_empty(&self) -> Self;
 
     // Static information
     // This could be done with associated functions (type-associated data),
@@ -53,6 +51,17 @@ pub trait Transducer<I, D, O> {
     fn n_transs(&self) -> usize;
 
     /* DERIVED FUNCTIONALITY */
+
+    // Spawn an empty copy of the transducer: one that is in the initial
+    // state and prior to any .init() updates
+    // Note: this implementation is most efficient if self has not been modified;
+    // if self has a lot of state it clones that state unnecessarily.
+    // However this is only used in testing right now, so not worth optimizing.
+    fn spawn_empty(&self) -> Self {
+        let mut result = self.clone();
+        result.reset();
+        result
+    }
 
     // Process an input stream (plus an initial value)
     fn process_stream<'a, Strm>(

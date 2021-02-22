@@ -17,7 +17,7 @@ use std::mem;
 
 /*
     Functions in the transducer need to be clonable --
-    this is a convenience trait to summarize that.
+    we define convenience traits to summarize that.
 */
 pub trait FnClone0<O>: Fn() -> O + Clone {}
 impl<O, F: Fn() -> O + Clone> FnClone0<O> for F {}
@@ -29,7 +29,8 @@ pub trait FnClone2<I1, I2, O>: Fn(I1, I2) -> O + Clone {}
 impl<I1, I2, O, F: Fn(I1, I2) -> O + Clone> FnClone2<I1, I2, O> for F {}
 
 /*
-    QRE epsilon --
+    QRE epsilon
+
     Base construct which processes no data and immediately produces output
 */
 
@@ -39,14 +40,13 @@ pub struct Epsilon<I, D, O, F: FnClone1<I, O>> {
     ph_d: PhantomData<D>,
     ph_o: PhantomData<O>,
 }
-impl<I, D, O, F: FnClone1<I, O>> Epsilon<I, D, O, F> {
-    fn new(action: F) -> Self {
-        Self { action, ph_i: PhantomData, ph_d: PhantomData, ph_o: PhantomData }
-    }
+pub fn epsilon<I, D, O, F: FnClone1<I, O>>(action: F) -> Epsilon<I, D, O, F> {
+    Epsilon { action, ph_i: PhantomData, ph_d: PhantomData, ph_o: PhantomData }
 }
+
 impl<I, D, O, F: FnClone1<I, O>> Clone for Epsilon<I, D, O, F> {
     fn clone(&self) -> Self {
-        Self::new(self.action.clone())
+        epsilon(self.action.clone())
     }
 }
 impl<I, D, O, F: FnClone1<I, O>> Transducer<I, D, O> for Epsilon<I, D, O, F> {
@@ -57,9 +57,6 @@ impl<I, D, O, F: FnClone1<I, O>> Transducer<I, D, O> for Epsilon<I, D, O, F> {
         Ext::None
     }
     fn reset(&mut self) {}
-    fn spawn_empty(&self) -> Self {
-        self.clone()
-    }
 
     fn is_restartable(&self) -> bool {
         true
@@ -76,45 +73,50 @@ impl<I, D, O, F: FnClone1<I, O>> Transducer<I, D, O> for Epsilon<I, D, O, F> {
         1
     }
 }
-pub fn epsilon<I, D, O, F: FnClone1<I, O>>(action: F) -> Epsilon<I, D, O, F> {
-    Epsilon::new(action)
-}
 
 /*
-    QRE atom --
+    QRE atom
+
     Base construct which processes a single data item and then
     produces output only if the data item satisfies a guard
 */
 
-pub struct Atom<I, D, O, G: FnClone1<D, bool>, F: FnClone2<I, D, O>> {
+pub struct Atom<I, D, O, G, F>
+where
+    G: FnClone1<D, bool>,
+    F: FnClone2<I, D, O>,
+{
     guard: G,
     action: F,
     istate: Ext<I>,
     ph_d: PhantomData<D>,
     ph_o: PhantomData<O>,
 }
-impl<I, D, O, G: FnClone1<D, bool>, F: FnClone2<I, D, O>> Atom<I, D, O, G, F> {
-    fn new(guard: G, action: F) -> Self {
-        Self {
-            guard,
-            action,
-            istate: Ext::None,
-            ph_d: PhantomData,
-            ph_o: PhantomData,
-        }
-    }
+pub fn atom<I, D, O, G: FnClone1<D, bool>, F: FnClone2<I, D, O>>(
+    guard: G,
+    action: F,
+) -> Atom<I, D, O, G, F> {
+    let istate = Ext::None;
+    Atom { guard, action, istate, ph_d: PhantomData, ph_o: PhantomData }
 }
-impl<I: Clone, D, O, G: FnClone1<D, bool>, F: FnClone2<I, D, O>> Clone
-    for Atom<I, D, O, G, F>
+
+impl<I, D, O, G, F> Clone for Atom<I, D, O, G, F>
+where
+    I: Clone,
+    G: FnClone1<D, bool>,
+    F: FnClone2<I, D, O>,
 {
     fn clone(&self) -> Self {
-        let mut new = self.spawn_empty();
+        let mut new = atom(self.guard.clone(), self.action.clone());
         new.istate = self.istate.clone();
         new
     }
 }
-impl<I: Clone, D, O, G: FnClone1<D, bool>, F: FnClone2<I, D, O>>
-    Transducer<I, D, O> for Atom<I, D, O, G, F>
+impl<I, D, O, G, F> Transducer<I, D, O> for Atom<I, D, O, G, F>
+where
+    I: Clone,
+    G: FnClone1<D, bool>,
+    F: FnClone2<I, D, O>,
 {
     fn init(&mut self, i: I) -> Ext<O> {
         self.istate += Ext::One(i);
@@ -128,9 +130,6 @@ impl<I: Clone, D, O, G: FnClone1<D, bool>, F: FnClone2<I, D, O>>
     fn reset(&mut self) {
         self.istate = Ext::None;
     }
-    fn spawn_empty(&self) -> Self {
-        Self::new(self.guard.clone(), self.action.clone())
-    }
 
     fn is_restartable(&self) -> bool {
         true
@@ -142,11 +141,69 @@ impl<I: Clone, D, O, G: FnClone1<D, bool>, F: FnClone2<I, D, O>>
         1
     }
 }
-pub fn atom<I, D, O, G: FnClone1<D, bool>, F: FnClone2<I, D, O>>(
-    guard: G,
-    action: F,
-) -> Atom<I, D, O, G, F> {
-    Atom::new(guard, action)
+
+/*
+    QRE union
+
+    Processes the input stream and produces the union (+ on Ext<T>)
+    of the two results.
+*/
+pub struct Union<I, D, O, M1, M2>
+where
+    M1: Transducer<I, D, O>,
+    M2: Transducer<I, D, O>,
+{
+    m1: M1,
+    m2: M2,
+    ph_i: PhantomData<I>,
+    ph_d: PhantomData<D>,
+    ph_o: PhantomData<O>,
+}
+pub fn union<I, D, O, M1, M2>(m1: M1, m2: M2) -> Union<I, D, O, M1, M2>
+where
+    M1: Transducer<I, D, O>,
+    M2: Transducer<I, D, O>,
+{
+    Union { m1, m2, ph_i: PhantomData, ph_d: PhantomData, ph_o: PhantomData }
+}
+
+impl<I, D, O, M1, M2> Clone for Union<I, D, O, M1, M2>
+where
+    M1: Transducer<I, D, O>,
+    M2: Transducer<I, D, O>,
+{
+    fn clone(&self) -> Self {
+        union(self.m1.clone(), self.m2.clone())
+    }
+}
+impl<I, D, O, M1, M2> Transducer<I, D, O> for Union<I, D, O, M1, M2>
+where
+    I: Clone,
+    D: Clone,
+    M1: Transducer<I, D, O>,
+    M2: Transducer<I, D, O>,
+{
+    fn init(&mut self, i: I) -> Ext<O> {
+        let i2 = i.clone();
+        self.m1.init(i) + self.m2.init(i2)
+    }
+    fn update(&mut self, item: D) -> Ext<O> {
+        let item2 = item.clone();
+        self.m1.update(item) + self.m2.update(item2)
+    }
+    fn reset(&mut self) {
+        self.m1.reset();
+        self.m2.reset();
+    }
+    fn is_restartable(&self) -> bool {
+        self.m1.is_restartable() && self.m2.is_restartable()
+    }
+    fn n_states(&self) -> usize {
+        self.m1.n_states() + self.m2.n_states()
+    }
+    fn n_transs(&self) -> usize {
+        self.m1.n_transs() + self.m2.n_transs()
+    }
 }
 
 /*
@@ -267,5 +324,15 @@ mod tests {
             m2.check_restartability_for(rstrm.iter().cloned());
             m3.check_restartability_for(rstrm.iter().cloned());
         }
+    }
+
+    #[test]
+    fn test_union() {
+        // TODO
+    }
+
+    #[test]
+    fn test_union_restartable() {
+        // TODO
     }
 }
