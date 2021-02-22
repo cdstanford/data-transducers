@@ -12,6 +12,7 @@
 
 use super::ext_value::{self, Ext};
 use super::interface::Transducer;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::mem;
 
@@ -324,6 +325,10 @@ where
 
     Here we're using X instead of I, Z instead of O as this makes
     the intermediate type Y clearer.
+
+    This and iteration are the most interesting constructs, and the ones
+    where restartability on at least one sub-transducer is a requirement
+    for the construction.
 */
 
 pub struct Concat<D, X, Y, Z, M1, M2>
@@ -414,8 +419,137 @@ where
     Parse the input stream as a sequence of matches, and apply the
     sub-transducer to each match.
 
-    TODO
+    Like concatenation this is a more interesting construction that requires
+    restartability. Additionally, iteration is the only construct where the
+    update logic is more complex because the evaluation involves a feedback
+    loop (result of .update() feeds back in as .init()).
 */
+
+pub struct Iter<X, D, M>
+where
+    M: Transducer<X, D, X>,
+{
+    m: M,
+    // The accumulation of values we have .init() into m
+    istate: Ext<X>,
+    // True if m produced output in response to an .init() (degenerate case),
+    // false if it does not produce such output, None if this is not known
+    // yet.
+    // Once we determine true or false, self.loopy never changes;
+    // this is sound because the behavior of .init() is independent of the
+    // context, which is not true in general but holds due to the requirement
+    // that M is restartable.
+    loopy: Option<bool>,
+    ph_d: PhantomData<D>,
+}
+pub fn iter<X, D, M>(m: M) -> Iter<X, D, M>
+where
+    M: Transducer<X, D, X>,
+{
+    // REQUIREMENT: m must be restartable
+    assert!(m.is_restartable());
+    let istate = Ext::None;
+    let loopy = None;
+    Iter { m, istate, loopy, ph_d: PhantomData }
+}
+
+impl<X, D, M> Clone for Iter<X, D, M>
+where
+    X: Clone,
+    M: Transducer<X, D, X>,
+{
+    fn clone(&self) -> Self {
+        let m = self.m.clone();
+        let istate = self.istate.clone();
+        let loopy = self.loopy;
+        Iter { m, istate, loopy, ph_d: PhantomData }
+    }
+}
+impl<X, D, M> Transducer<X, D, X> for Iter<X, D, M>
+where
+    X: Clone + Debug + Eq,
+    D: Clone,
+    M: Transducer<X, D, X>,
+{
+    fn init(&mut self, i: Ext<X>) -> Ext<X> {
+        if i.is_none() {
+            return Ext::None;
+        }
+        match self.loopy {
+            Some(true) => {
+                if cfg!(debug_assertions) {
+                    self.istate = Ext::Many;
+                    assert_eq!(self.m.init(Ext::Many), Ext::Many);
+                } else if !self.istate.is_many() {
+                    self.m.init(Ext::Many);
+                }
+                Ext::Many
+            }
+            Some(false) => {
+                if cfg!(debug_assertions) {
+                    self.istate += i.clone();
+                    assert_eq!(self.m.init(i), Ext::None);
+                } else if !self.istate.is_many() {
+                    self.istate += i.clone();
+                    self.m.init(i);
+                }
+                Ext::None
+            }
+            None => {
+                // This is where we find out if m is loopy
+                debug_assert!(self.istate.is_none());
+                self.istate = i.clone();
+                let out = self.m.init(i);
+                if out.is_none() {
+                    // Not loopy
+                    self.loopy = Some(false);
+                    Ext::None
+                } else {
+                    // Loopy; set this knowledge and rerun function
+                    // with new output
+                    self.loopy = Some(true);
+                    self.init(out)
+                }
+            }
+        }
+    }
+    fn update(&mut self, item: D) -> Ext<X> {
+        self.istate = Ext::None;
+        let out1 = self.m.update(item);
+        let out2 = self.init(out1.clone());
+        if out2.is_none() {
+            debug_assert_eq!(self.istate, out1);
+            out1
+        } else {
+            // Should only happen if m is loopy
+            debug_assert_eq!(self.loopy, Some(true));
+            debug_assert_eq!(self.istate, Ext::Many);
+            debug_assert!(!out1.is_none());
+            debug_assert_eq!(out2, Ext::Many);
+            Ext::Many
+        }
+    }
+    fn reset(&mut self) {
+        self.m.reset();
+        self.istate = Ext::None;
+        // Don't need to reset self.loopy; this information will remain valid
+    }
+
+    fn is_epsilon(&self) -> bool {
+        self.m.is_epsilon()
+    }
+    fn is_restartable(&self) -> bool {
+        // m was restartable on construction, so this should always be true.
+        debug_assert!(self.m.is_restartable());
+        true
+    }
+    fn n_states(&self) -> usize {
+        self.m.n_states() + 1
+    }
+    fn n_transs(&self) -> usize {
+        self.m.n_transs()
+    }
+}
 
 /*
     QRE repeated stream
@@ -523,7 +657,6 @@ where
 mod tests {
     use super::*;
     use crate::interface::RInput;
-    use std::fmt::Debug;
 
     const EX_RSTRM_1: &[RInput<i32, char>] = &[
         RInput::Item('a'),
