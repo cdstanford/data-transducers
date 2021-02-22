@@ -59,10 +59,10 @@ where
 {
     Epsilon { action, ph_i: PhantomData, ph_d: PhantomData, ph_o: PhantomData }
 }
-pub fn epsilon_iden<I, D>() -> Epsilon<I, D, I, impl FnClone1<I, I>> {
+pub fn epsilon_iden<I, D>() -> impl Transducer<I, D, I> {
     epsilon(|i| i)
 }
-pub fn epsilon_const<I, D, O>(out: O) -> Epsilon<I, D, O, impl FnClone1<I, O>>
+pub fn epsilon_const<I, D, O>(out: O) -> impl Transducer<I, D, O>
 where
     O: Clone,
 {
@@ -120,11 +120,19 @@ where
       Atom with no guard: applies some function to the input item
 
     - atom_guard
-      Atom with no action: outputs the input item if it matches the guard
+      Atom with no action: outputs () if item matches the guard
 
     - atom_iden
       Atom with no action or guard: just matches one item (any item) and
+      outputs the initial input.
+
+    - atom_item_iden
+      Atom with no action or guard: just matches one item (any item) and
       outputs it.
+
+    - atom_unit
+      Atom with no action or guard: just matches one item (any item) and
+      outputs ().
 */
 
 pub struct Atom<I, D, O, G, F>
@@ -146,23 +154,30 @@ where
     let istate = Ext::None;
     Atom { guard, action, istate, ph_d: PhantomData, ph_o: PhantomData }
 }
-pub fn atom_univ<I, D, O, F>(
-    action: F,
-) -> Atom<I, D, O, impl FnClone1<D, bool>, F>
+pub fn atom_univ<I, D, O, F>(action: F) -> impl Transducer<I, D, O>
 where
+    I: Clone,
     F: FnClone2<I, D, O>,
 {
     atom(|_d| true, action)
 }
-pub fn atom_guard<D, G>(guard: G) -> Atom<(), D, D, G, impl FnClone2<(), D, D>>
+pub fn atom_guard<D, G>(guard: G) -> impl Transducer<(), D, ()>
 where
     G: FnClone1<D, bool>,
 {
-    atom(guard, |(), d| d)
+    atom(guard, |(), _d| ())
 }
-pub fn atom_iden<D>(
-) -> Atom<(), D, D, impl FnClone1<D, bool>, impl FnClone2<(), D, D>> {
-    atom(|_d| true, |(), d| d)
+pub fn atom_iden<I, D>() -> impl Transducer<I, D, I>
+where
+    I: Clone,
+{
+    atom_univ(|i, _d| i)
+}
+pub fn atom_item_iden<D>() -> impl Transducer<(), D, D> {
+    atom_univ(|(), d| d)
+}
+pub fn atom_unit<D>() -> impl Transducer<(), D, ()> {
+    atom_univ(|(), _d| ())
 }
 
 impl<I, D, O, G, F> Clone for Atom<I, D, O, G, F>
@@ -516,7 +531,6 @@ where
 impl<X, D, M> Transducer<X, D, X> for Iterate<X, D, M>
 where
     X: Clone + Debug + Eq,
-    D: Clone,
     M: Transducer<X, D, X>,
 {
     fn init(&mut self, i: Ext<X>) -> Ext<X> {
@@ -719,17 +733,61 @@ where
 /*
     QRE additional derived constructs
 
+    - stream_iden.
+      Match the entire input stream (any input stream) and apply the
+      identity function. Analagous to atom_iden and epsilon_iden.
+
     - repeat
       Repeat a constant item initially and on every update
       (In case multiple .inits() or .init(Ext::Many), obeys restartability
       semantics)
 
-    - apply
+    - map
+      Apply a function to every item in the input stream
+
+    - apply_op
       Apply a function to the outputs of two transducers.
       (This is parcomp followed by an epsilon.)
-
-    TODO
+      (More versions of this could be written for ops of differing arities.)
 */
+
+pub fn stream_iden<I, D>() -> impl Transducer<I, D, I>
+where
+    I: Clone + Debug + Eq,
+{
+    iterate(atom_iden())
+}
+
+pub fn repeat<D, O>(out: O) -> impl Transducer<(), D, O>
+where
+    O: Clone,
+    D: Clone,
+{
+    concat(stream_iden(), epsilon_const(out))
+}
+
+pub fn map<D, E, F>(map_fun: F) -> impl Transducer<(), D, E>
+where
+    D: Clone,
+    F: FnClone1<D, E>,
+{
+    concat(stream_iden(), atom_univ(move |(), d| map_fun(d)))
+}
+
+pub fn apply_op<I, D, O1, O2, O, M1, M2, F>(
+    m1: M1,
+    m2: M2,
+    op: F,
+) -> impl Transducer<I, D, O>
+where
+    I: Clone,
+    D: Clone,
+    M1: Transducer<I, D, O1>,
+    M2: Transducer<I, D, O2>,
+    F: FnClone2<O1, O2, O>,
+{
+    concat(parcomp(m1, m2), epsilon(move |(o1, o2)| op(o1, o2)))
+}
 
 /*
     QRE transducer top-level wrapper
