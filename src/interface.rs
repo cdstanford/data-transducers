@@ -38,19 +38,44 @@ pub trait Transducer<I, D, O>: Clone {
     // init: record an initial value for the computation (or a restart)
     // update: process an input data item
     // reset: restore the transducer to its original state
-    fn init(&mut self, i: I) -> Ext<O>;
+    // INIT PROPERTY: .init() should satisfy that .init(Ext::None) has no effect
+    // and returns None. Additionally .init(Ext::Many) should return the
+    // union of calling .init(Ext::One(x)) two or more times for any combination
+    // of xs.
+    fn init(&mut self, i: Ext<I>) -> Ext<O>;
     fn update(&mut self, item: D) -> Ext<O>;
     fn reset(&mut self);
 
     // Static information
-    // This could be done with associated functions (type-associated data),
+    // These could be done with associated functions (type-associated data),
     // but methods are more flexible as it will allow transducer implementations
-    // which do not encode the # of states and transitions as part of the type
+    // which do not encode the # of states and transitions as part of the type.
+    // IMPORTANT: these should be completely constant, invariant under .init(),
+    //     .update(), .reset(), and .clone(). Only some additional methods
+    //     can break them for your type (e.g. if you have a function
+    //     .add_state() for some generic transducer type).
+    // is_epsilon: should return true if this is a function such that .init()
+    //     may have some effect and/or produce output, but
+    //     .update() is equivalent to .reset() and returns Ext::None.
+    // is_restartable: tracks a complicated condition necessary for some
+    //     some constructions; the exact condition is articulated in
+    //     is_restartable_for below (should hold for all input streams)
+    //     It should hold that if is_epsilon() is true then is_restartable()
+    //     is true also.
+    // n_states: # of internal values kept (of type I, O, D, or something else)
+    //     (in this development, does not input/output if they are not stored)
+    // n_transs: # of transforming functions kept.
+    fn is_epsilon(&self) -> bool;
     fn is_restartable(&self) -> bool;
     fn n_states(&self) -> usize;
     fn n_transs(&self) -> usize;
 
     /* DERIVED FUNCTIONALITY */
+
+    // Version of init which takes I instead of Ext<I>
+    fn init_one(&mut self, i: I) -> Ext<O> {
+        self.init(Ext::One(i))
+    }
 
     // Spawn an empty copy of the transducer: one that is in the initial
     // state and prior to any .init() updates
@@ -75,7 +100,7 @@ pub trait Transducer<I, D, O>: Clone {
         Self: Sized,
         O: 'a,
     {
-        let y0 = self.init(i);
+        let y0 = self.init_one(i);
         Box::new(iter::once(y0).chain(iter::from_fn(move || {
             strm.next().map(|item| self.update(item))
         })))
@@ -93,7 +118,7 @@ pub trait Transducer<I, D, O>: Clone {
     {
         Box::new(iter::from_fn(move || {
             strm.next().map(|item| match item {
-                RInput::Restart(i) => self.init(i),
+                RInput::Restart(i) => self.init_one(i),
                 RInput::Item(item) => self.update(item),
             })
         }))
@@ -121,7 +146,7 @@ pub trait Transducer<I, D, O>: Clone {
                 RInput::Restart(i) => {
                     println!("Restart: {:?}", i);
                     transducers.push(self.spawn_empty());
-                    let out = transducers.last_mut().unwrap().init(i);
+                    let out = transducers.last_mut().unwrap().init_one(i);
                     println!("--> output: {:?}", out);
                     out
                 }

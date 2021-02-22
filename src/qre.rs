@@ -62,14 +62,17 @@ impl<I, D, O, F> Transducer<I, D, O> for Epsilon<I, D, O, F>
 where
     F: FnClone1<I, O>,
 {
-    fn init(&mut self, i: I) -> Ext<O> {
-        Ext::One((self.action)(i))
+    fn init(&mut self, i: Ext<I>) -> Ext<O> {
+        ext_value::apply1(|x| (self.action)(x), i)
     }
     fn update(&mut self, _item: D) -> Ext<O> {
         Ext::None
     }
     fn reset(&mut self) {}
 
+    fn is_epsilon(&self) -> bool {
+        true
+    }
     fn is_restartable(&self) -> bool {
         true
     }
@@ -131,8 +134,8 @@ where
     G: FnClone1<D, bool>,
     F: FnClone2<I, D, O>,
 {
-    fn init(&mut self, i: I) -> Ext<O> {
-        self.istate += Ext::One(i);
+    fn init(&mut self, i: Ext<I>) -> Ext<O> {
+        self.istate += i;
         Ext::None
     }
     fn update(&mut self, item: D) -> Ext<O> {
@@ -144,6 +147,9 @@ where
         self.istate = Ext::None;
     }
 
+    fn is_epsilon(&self) -> bool {
+        false
+    }
     fn is_restartable(&self) -> bool {
         true
     }
@@ -161,6 +167,7 @@ where
     Processes the input stream and produces the union (+ on Ext<T>)
     of the two results.
 */
+
 pub struct Union<I, D, O, M1, M2>
 where
     M1: Transducer<I, D, O>,
@@ -196,7 +203,7 @@ where
     M1: Transducer<I, D, O>,
     M2: Transducer<I, D, O>,
 {
-    fn init(&mut self, i: I) -> Ext<O> {
+    fn init(&mut self, i: Ext<I>) -> Ext<O> {
         let i2 = i.clone();
         self.m1.init(i) + self.m2.init(i2)
     }
@@ -207,6 +214,10 @@ where
     fn reset(&mut self) {
         self.m1.reset();
         self.m2.reset();
+    }
+
+    fn is_epsilon(&self) -> bool {
+        self.m1.is_epsilon() && self.m2.is_epsilon()
     }
     fn is_restartable(&self) -> bool {
         self.m1.is_restartable() && self.m2.is_restartable()
@@ -225,6 +236,7 @@ where
     Processes the input stream and produces an ordered pair
     of the two results.
 */
+
 pub struct ParComp<I, D, O1, O2, M1, M2>
 where
     M1: Transducer<I, D, O1>,
@@ -272,7 +284,7 @@ where
     M1: Transducer<I, D, O1>,
     M2: Transducer<I, D, O2>,
 {
-    fn init(&mut self, i: I) -> Ext<(O1, O2)> {
+    fn init(&mut self, i: Ext<I>) -> Ext<(O1, O2)> {
         let i2 = i.clone();
         self.m1.init(i) * self.m2.init(i2)
     }
@@ -283,6 +295,10 @@ where
     fn reset(&mut self) {
         self.m1.reset();
         self.m2.reset();
+    }
+
+    fn is_epsilon(&self) -> bool {
+        self.m1.is_epsilon() && self.m2.is_epsilon()
     }
     fn is_restartable(&self) -> bool {
         // Requires checking if the language of the two transducers agrees!
@@ -298,12 +314,108 @@ where
 }
 
 /*
+    QRE concat
+
+    Processes the input stream w and splits it into
+        w = uv
+    where u matches the first transducer and v matches the second transducer.
+    Feeds the output of the first as the input of the second.
+    If multiple matches, produces Ext::Many.
+
+    Here we're using X instead of I, Z instead of O as this makes
+    the intermediate type Y clearer.
+*/
+
+pub struct Concat<D, X, Y, Z, M1, M2>
+where
+    M1: Transducer<X, D, Y>,
+    M2: Transducer<Y, D, Z>,
+{
+    m1: M1,
+    m2: M2,
+    ph_d: PhantomData<D>,
+    ph_x: PhantomData<X>,
+    ph_y: PhantomData<Y>,
+    ph_z: PhantomData<Z>,
+}
+pub fn concat<D, X, Y, Z, M1, M2>(m1: M1, m2: M2) -> Concat<D, X, Y, Z, M1, M2>
+where
+    M1: Transducer<X, D, Y>,
+    M2: Transducer<Y, D, Z>,
+{
+    // REQUIREMENT: m2 must be restartable OR m1 must be an epsilon
+    assert!(m2.is_restartable() || m1.is_epsilon());
+    Concat {
+        m1,
+        m2,
+        ph_d: PhantomData,
+        ph_x: PhantomData,
+        ph_y: PhantomData,
+        ph_z: PhantomData,
+    }
+}
+
+impl<D, X, Y, Z, M1, M2> Clone for Concat<D, X, Y, Z, M1, M2>
+where
+    M1: Transducer<X, D, Y>,
+    M2: Transducer<Y, D, Z>,
+{
+    fn clone(&self) -> Self {
+        concat(self.m1.clone(), self.m2.clone())
+    }
+}
+impl<D, X, Y, Z, M1, M2> Transducer<X, D, Z> for Concat<D, X, Y, Z, M1, M2>
+where
+    D: Clone,
+    M1: Transducer<X, D, Y>,
+    M2: Transducer<Y, D, Z>,
+{
+    fn init(&mut self, i: Ext<X>) -> Ext<Z> {
+        self.m2.init(self.m1.init(i))
+    }
+    fn update(&mut self, item: D) -> Ext<Z> {
+        let y = self.m1.update(item.clone());
+        let z1 = self.m2.update(item);
+        let z2 = self.m2.init(y);
+        z1 + z2
+    }
+    fn reset(&mut self) {
+        self.m1.reset();
+        self.m2.reset();
+    }
+
+    fn is_epsilon(&self) -> bool {
+        // Concatenation of two epsilons is an epsilon.
+        // Note: to prove .update() is equivalent to .reset() for the concat,
+        // note that y is Ext::None, so self.m2.init(y) has no effect
+        // by the property of .init() that should hold for any transducer.
+        self.m1.is_epsilon() && self.m2.is_epsilon()
+    }
+    fn is_restartable(&self) -> bool {
+        // There are two cases here: m2 was restartable on construction,
+        // or m1 was epsilon on construction. In the first case for
+        // restartability, m1 must be restartable. In the second case,
+        // m2 must be restartable. Either way, this is equivalent to
+        // saying that both m1 and m2 are restartable, since .is_epsilon()
+        // implies .is_restartable().
+        self.m1.is_restartable() && self.m2.is_restartable()
+    }
+    fn n_states(&self) -> usize {
+        self.m1.n_states() + self.m2.n_states()
+    }
+    fn n_transs(&self) -> usize {
+        self.m1.n_transs() + self.m2.n_transs()
+    }
+}
+
+/*
     QRE transducer top-level wrapper
 
-    For now, all this does is saves the number of states, number of transitions,
-    and restartability as this is more efficient than recomputing them all the
-    time.
+    For now, all this does is save the number of states, number of transitions,
+    epsilon-ness, and restartability as this is more efficient than recomputing
+    them all the time.
 */
+
 pub struct TopWrapper<I, D, O, M>
 where
     M: Transducer<I, D, O>,
@@ -312,6 +424,7 @@ where
     ph_i: PhantomData<I>,
     ph_d: PhantomData<D>,
     ph_o: PhantomData<O>,
+    epsilon: bool,
     restartable: bool,
     n_states: usize,
     n_transs: usize,
@@ -320,6 +433,7 @@ pub fn top<I, D, O, M>(m: M) -> TopWrapper<I, D, O, M>
 where
     M: Transducer<I, D, O>,
 {
+    let epsilon = m.is_epsilon();
     let restartable = m.is_restartable();
     let n_states = m.n_states();
     let n_transs = m.n_transs();
@@ -328,11 +442,13 @@ where
         ph_i: PhantomData,
         ph_d: PhantomData,
         ph_o: PhantomData,
+        epsilon,
         restartable,
         n_states,
         n_transs,
     }
 }
+
 impl<I, D, O, M> Clone for TopWrapper<I, D, O, M>
 where
     M: Transducer<I, D, O>,
@@ -345,7 +461,7 @@ impl<I, D, O, M> Transducer<I, D, O> for TopWrapper<I, D, O, M>
 where
     M: Transducer<I, D, O>,
 {
-    fn init(&mut self, i: I) -> Ext<O> {
+    fn init(&mut self, i: Ext<I>) -> Ext<O> {
         self.m.init(i)
     }
     fn update(&mut self, item: D) -> Ext<O> {
@@ -353,6 +469,10 @@ where
     }
     fn reset(&mut self) {
         self.m.reset();
+    }
+
+    fn is_epsilon(&self) -> bool {
+        self.epsilon
     }
     fn is_restartable(&self) -> bool {
         self.restartable
@@ -427,16 +547,16 @@ mod tests {
     #[test]
     fn test_epsilon() {
         let mut m1 = epsilon(|i: i32| i + 1);
-        assert_eq!(m1.init(1), Ext::One(2));
-        assert_eq!(m1.init(-4), Ext::One(-3));
+        assert_eq!(m1.init_one(1), Ext::One(2));
+        assert_eq!(m1.init_one(-4), Ext::One(-3));
         assert_eq!(m1.update('a'), Ext::None);
         assert_eq!(m1.update('b'), Ext::None);
         let mut m2 = epsilon(|_i: i32| 0);
         assert_eq!(m2.update('a'), Ext::None);
         assert_eq!(m2.update('a'), Ext::None);
-        assert_eq!(m2.init(3), Ext::One(0));
+        assert_eq!(m2.init_one(3), Ext::One(0));
         let mut m3 = epsilon(|s: String| s + "ab");
-        assert_eq!(m3.init("xyz".to_owned()), Ext::One("xyzab".to_owned()));
+        assert_eq!(m3.init_one("xyz".to_owned()), Ext::One("xyzab".to_owned()));
         assert_eq!(m3.update('a'), Ext::None);
         assert_eq!(m3.update('a'), Ext::None);
     }
@@ -471,15 +591,15 @@ mod tests {
             |i, ch| format!("{}{}", i, ch),
         );
         assert_eq!(m.update('a'), Ext::None);
-        assert_eq!(m.init("x".to_string()), Ext::None);
+        assert_eq!(m.init_one("x".to_string()), Ext::None);
         assert_eq!(m.update('1'), Ext::One("x1".to_string()));
         assert_eq!(m.update('2'), Ext::None);
-        assert_eq!(m.init("x".to_string()), Ext::None);
-        assert_eq!(m.init("y".to_string()), Ext::None);
+        assert_eq!(m.init_one("x".to_string()), Ext::None);
+        assert_eq!(m.init_one("y".to_string()), Ext::None);
         assert_eq!(m.update('1'), Ext::Many);
         assert_eq!(m.update('2'), Ext::None);
         assert_eq!(m.update('3'), Ext::None);
-        assert_eq!(m.init("".to_string()), Ext::None);
+        assert_eq!(m.init_one("".to_string()), Ext::None);
         assert_eq!(m.update('1'), Ext::One("1".to_string()));
     }
     #[test]
@@ -535,23 +655,7 @@ mod tests {
         // TODO
     }
     #[test]
-    fn test_concat_epsleft() {
-        // TODO
-    }
-    #[test]
-    fn test_concat_epsright() {
-        // TODO
-    }
-    #[test]
     fn test_concat_restartable() {
-        // TODO
-    }
-    #[test]
-    fn test_concat_epsleft_restartable() {
-        // TODO
-    }
-    #[test]
-    fn test_concat_epsright_restartable() {
         // TODO
     }
 
