@@ -362,7 +362,6 @@ mod tests {
         assert_eq!(m3.update('a'), Ext::None);
         assert_eq!(m3.update('a'), Ext::None);
     }
-
     #[test]
     fn test_epsilon_process() {
         // We probably do not need to write separate tests using .process_stream
@@ -379,7 +378,6 @@ mod tests {
             vec![Ext::One(5)],
         );
     }
-
     #[test]
     fn test_epsilon_restartable() {
         let m1 = epsilon(|i: i32| i * 2);
@@ -406,7 +404,6 @@ mod tests {
         assert_eq!(m.init("".to_string()), Ext::None);
         assert_eq!(m.update('1'), Ext::One("1".to_string()));
     }
-
     #[test]
     fn test_atom_restartable() {
         let m1 = atom(|ch| ch == 'b', |i, _ch| i + 2);
@@ -432,9 +429,60 @@ mod tests {
     fn test_union() {
         // TODO
     }
-
     #[test]
     fn test_union_restartable() {
+        // TODO
+    }
+
+    #[test]
+    fn test_par() {
+        // TODO
+    }
+    #[test]
+    fn test_par_restartable() {
+        // TODO
+    }
+
+    #[test]
+    fn test_prefsum() {
+        // TODO
+    }
+    #[test]
+    fn test_prefsum_restartable() {
+        // TODO
+    }
+
+    #[test]
+    fn test_concat() {
+        // TODO
+    }
+    #[test]
+    fn test_concat_epsleft() {
+        // TODO
+    }
+    #[test]
+    fn test_concat_epsright() {
+        // TODO
+    }
+    #[test]
+    fn test_concat_restartable() {
+        // TODO
+    }
+    #[test]
+    fn test_concat_epsleft_restartable() {
+        // TODO
+    }
+    #[test]
+    fn test_concat_epsright_restartable() {
+        // TODO
+    }
+
+    #[test]
+    fn test_iter() {
+        // TODO
+    }
+    #[test]
+    fn test_iter_restartable() {
         // TODO
     }
 
