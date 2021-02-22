@@ -167,14 +167,14 @@ impl<T> ops::MulAssign<Ext<()>> for Ext<T> {
 
 pub fn apply0<T1, F>(op: F) -> Ext<T1>
 where
-    F: Fn() -> T1,
+    F: FnOnce() -> T1,
 {
     Ext::One(op())
 }
 
 pub fn apply1<T1, T2, F>(op: F, v1: Ext<T1>) -> Ext<T2>
 where
-    F: Fn(T1) -> T2,
+    F: FnOnce(T1) -> T2,
 {
     match v1 {
         Ext::None => Ext::None,
@@ -185,7 +185,7 @@ where
 
 pub fn apply2<T1, T2, T3, F>(op: F, v1: Ext<T1>, v2: Ext<T2>) -> Ext<T3>
 where
-    F: Fn(T1, T2) -> T3,
+    F: FnOnce(T1, T2) -> T3,
 {
     apply1(|(x, y)| op(x, y), v1 * v2)
 }
@@ -197,7 +197,7 @@ pub fn apply3<T1, T2, T3, T4, F>(
     v3: Ext<T3>,
 ) -> Ext<T4>
 where
-    F: Fn(T1, T2, T3) -> T4,
+    F: FnOnce(T1, T2, T3) -> T4,
 {
     apply1(|((x, y), z)| op(x, y, z), v1 * v2 * v3)
 }
@@ -210,7 +210,7 @@ pub fn apply4<T1, T2, T3, T4, T5, F>(
     v4: Ext<T4>,
 ) -> Ext<T5>
 where
-    F: Fn(T1, T2, T3, T4) -> T5,
+    F: FnOnce(T1, T2, T3, T4) -> T5,
 {
     apply1(|(((x, y), z), t)| op(x, y, z, t), v1 * v2 * v3 * v4)
 }
