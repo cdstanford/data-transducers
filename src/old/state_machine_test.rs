@@ -1,5 +1,8 @@
 /*
     A basic test of the state_machine module.
+
+    NOTE: this was originally in examples/
+    and uses the old src/old/state_machine.rs
 */
 
 use data_transducers::ext_value::Ext;
