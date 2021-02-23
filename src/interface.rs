@@ -43,7 +43,7 @@ pub trait Transducer<I, D, O> {
     // union of calling .init(Ext::One(x)) two or more times for any combination
     // of xs.
     fn init(&mut self, i: Ext<I>) -> Ext<O>;
-    fn update(&mut self, item: D) -> Ext<O>;
+    fn update(&mut self, item: &D) -> Ext<O>;
     fn reset(&mut self);
 
     // Static information
@@ -77,6 +77,11 @@ pub trait Transducer<I, D, O> {
         self.init(Ext::One(i))
     }
 
+    // Version of update which takes D instead of &D
+    fn update_val(&mut self, d: D) -> Ext<O> {
+        self.update(&d)
+    }
+
     // Spawn an empty copy of the transducer: one that is in the initial
     // state and prior to any .init() updates
     // Note: this implementation is most efficient if self has not been modified;
@@ -105,7 +110,7 @@ pub trait Transducer<I, D, O> {
     {
         let y0 = self.init_one(i);
         Box::new(iter::once(y0).chain(iter::from_fn(move || {
-            strm.next().map(|item| self.update(item))
+            strm.next().map(|item| self.update(&item))
         })))
     }
 
@@ -122,7 +127,7 @@ pub trait Transducer<I, D, O> {
         Box::new(iter::from_fn(move || {
             strm.next().map(|item| match item {
                 RInput::Restart(i) => self.init_one(i),
-                RInput::Item(item) => self.update(item),
+                RInput::Item(item) => self.update(&item),
             })
         }))
     }
@@ -140,7 +145,7 @@ pub trait Transducer<I, D, O> {
         Strm: Iterator<Item = RInput<I, D>> + 'a,
         Self: Clone + Sized,
         I: Debug,
-        D: Clone + Debug,
+        D: Debug,
         O: Debug,
     {
         let mut transducers: Vec<Self> = Vec::new();
@@ -157,7 +162,7 @@ pub trait Transducer<I, D, O> {
                     println!("Item: {:?}", item);
                     let mut out = Ext::None;
                     for transducer in transducers.iter_mut() {
-                        out += transducer.update(item.clone());
+                        out += transducer.update(&item);
                     }
                     println!("--> output: {:?}", out);
                     out
@@ -173,7 +178,7 @@ pub trait Transducer<I, D, O> {
         Strm: Iterator<Item = RInput<I, D>> + Clone + 'a,
         Self: Clone + Sized,
         I: Debug,
-        D: Clone + Debug,
+        D: Debug,
         O: Debug + Eq,
     {
         let mut self1 = self.spawn_empty();

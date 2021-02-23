@@ -71,7 +71,7 @@ where
     fn init(&mut self, i: Ext<I>) -> Ext<O> {
         ext_value::apply1(|x| (self.action)(x), i)
     }
-    fn update(&mut self, _item: D) -> Ext<O> {
+    fn update(&mut self, _item: &D) -> Ext<O> {
         Ext::None
     }
     fn reset(&mut self) {}
@@ -124,8 +124,8 @@ where
 
 pub struct Atom<I, D, O, G, F>
 where
-    G: Fn(D) -> bool,
-    F: Fn(I, D) -> O,
+    G: Fn(&D) -> bool,
+    F: Fn(I, &D) -> O,
 {
     guard: G,
     action: F,
@@ -135,29 +135,29 @@ where
 }
 pub fn atom<I, D, O, G, F>(guard: G, action: F) -> Atom<I, D, O, G, F>
 where
-    G: Fn(D) -> bool,
-    F: Fn(I, D) -> O,
+    G: Fn(&D) -> bool,
+    F: Fn(I, &D) -> O,
 {
     let istate = Ext::None;
     Atom { guard, action, istate, ph_d: PhantomData, ph_o: PhantomData }
 }
 pub fn atom_univ<I, D, O, F>(action: F) -> impl Transducer<I, D, O>
 where
-    F: Fn(I, D) -> O,
+    F: Fn(I, &D) -> O,
 {
     atom(|_d| true, action)
 }
 pub fn atom_guard<D, G>(guard: G) -> impl Transducer<(), D, ()>
 where
-    G: Fn(D) -> bool,
+    G: Fn(&D) -> bool,
 {
     atom(guard, |(), _d| ())
 }
 pub fn atom_iden<I, D>() -> impl Transducer<I, D, I> {
     atom_univ(|i, _d| i)
 }
-pub fn atom_item_iden<D>() -> impl Transducer<(), D, D> {
-    atom_univ(|(), d| d)
+pub fn atom_item_iden<D: Clone>() -> impl Transducer<(), D, D> {
+    atom_univ(|(), d: &D| d.clone())
 }
 pub fn atom_unit<D>() -> impl Transducer<(), D, ()> {
     atom_univ(|(), _d| ())
@@ -166,8 +166,8 @@ pub fn atom_unit<D>() -> impl Transducer<(), D, ()> {
 impl<I, D, O, G, F> Clone for Atom<I, D, O, G, F>
 where
     I: Clone,
-    G: Fn(D) -> bool + Clone,
-    F: Fn(I, D) -> O + Clone,
+    G: Fn(&D) -> bool + Clone,
+    F: Fn(I, &D) -> O + Clone,
 {
     fn clone(&self) -> Self {
         let mut new = atom(self.guard.clone(), self.action.clone());
@@ -177,17 +177,17 @@ where
 }
 impl<I, D, O, G, F> Transducer<I, D, O> for Atom<I, D, O, G, F>
 where
-    G: Fn(D) -> bool,
-    F: Fn(I, D) -> O,
+    G: Fn(&D) -> bool,
+    F: Fn(I, &D) -> O,
 {
     fn init(&mut self, i: Ext<I>) -> Ext<O> {
         self.istate += i;
         Ext::None
     }
-    fn update(&mut self, item: D) -> Ext<O> {
+    fn update(&mut self, item: &D) -> Ext<O> {
         let mut istate = Ext::None;
         mem::swap(&mut self.istate, &mut istate);
-        ext_value::apply1(move |x| (self.action)(x, item), istate)
+        ext_value::apply1(move |x| (self.action)(x, &item), istate)
     }
     fn reset(&mut self) {
         self.istate = Ext::None;
@@ -245,7 +245,6 @@ where
 impl<I, D, O, M1, M2> Transducer<I, D, O> for Union<I, D, O, M1, M2>
 where
     I: Clone,
-    D: Clone,
     M1: Transducer<I, D, O>,
     M2: Transducer<I, D, O>,
 {
@@ -253,9 +252,8 @@ where
         let i2 = i.clone();
         self.m1.init(i) + self.m2.init(i2)
     }
-    fn update(&mut self, item: D) -> Ext<O> {
-        let item2 = item.clone();
-        self.m1.update(item) + self.m2.update(item2)
+    fn update(&mut self, item: &D) -> Ext<O> {
+        self.m1.update(item) + self.m2.update(item)
     }
     fn reset(&mut self) {
         self.m1.reset();
@@ -326,7 +324,6 @@ impl<I, D, O1, O2, M1, M2> Transducer<I, D, (O1, O2)>
     for ParComp<I, D, O1, O2, M1, M2>
 where
     I: Clone,
-    D: Clone,
     M1: Transducer<I, D, O1>,
     M2: Transducer<I, D, O2>,
 {
@@ -334,9 +331,8 @@ where
         let i2 = i.clone();
         self.m1.init(i) * self.m2.init(i2)
     }
-    fn update(&mut self, item: D) -> Ext<(O1, O2)> {
-        let item2 = item.clone();
-        self.m1.update(item) * self.m2.update(item2)
+    fn update(&mut self, item: &D) -> Ext<(O1, O2)> {
+        self.m1.update(item) * self.m2.update(item)
     }
     fn reset(&mut self) {
         self.m1.reset();
@@ -416,15 +412,14 @@ where
 }
 impl<D, X, Y, Z, M1, M2> Transducer<X, D, Z> for Concat<D, X, Y, Z, M1, M2>
 where
-    D: Clone,
     M1: Transducer<X, D, Y>,
     M2: Transducer<Y, D, Z>,
 {
     fn init(&mut self, i: Ext<X>) -> Ext<Z> {
         self.m2.init(self.m1.init(i))
     }
-    fn update(&mut self, item: D) -> Ext<Z> {
-        let y = self.m1.update(item.clone());
+    fn update(&mut self, item: &D) -> Ext<Z> {
+        let y = self.m1.update(item);
         let z1 = self.m2.update(item);
         let z2 = self.m2.init(y);
         z1 + z2
@@ -558,7 +553,7 @@ where
             }
         }
     }
-    fn update(&mut self, item: D) -> Ext<X> {
+    fn update(&mut self, item: &D) -> Ext<X> {
         self.istate = Ext::None;
         let out1 = self.m.update(item);
         let out2 = self.init(out1.clone());
@@ -690,7 +685,7 @@ where
         self.agg += z;
         self.update_agg(y)
     }
-    fn update(&mut self, item: D) -> Ext<Z> {
+    fn update(&mut self, item: &D) -> Ext<Z> {
         let y = self.m.update(item);
         self.update_agg(y)
     }
@@ -744,15 +739,13 @@ where
 pub fn repeat<D, O>(out: O) -> impl Transducer<(), D, O>
 where
     O: Clone,
-    D: Clone,
 {
     concat(stream_iden(), epsilon_const(out))
 }
 
 pub fn map<D, E, F>(map_fun: F) -> impl Transducer<(), D, E>
 where
-    D: Clone,
-    F: Fn(D) -> E,
+    F: Fn(&D) -> E,
 {
     concat(stream_iden(), atom_univ(move |(), d| map_fun(d)))
 }
@@ -764,7 +757,6 @@ pub fn apply_op<I, D, O1, O2, O, M1, M2, F>(
 ) -> impl Transducer<I, D, O>
 where
     I: Clone,
-    D: Clone,
     M1: Transducer<I, D, O1>,
     M2: Transducer<I, D, O2>,
     F: Fn(O1, O2) -> O,
@@ -828,7 +820,7 @@ where
     fn init(&mut self, i: Ext<I>) -> Ext<O> {
         self.m.init(i)
     }
-    fn update(&mut self, item: D) -> Ext<O> {
+    fn update(&mut self, item: &D) -> Ext<O> {
         self.m.update(item)
     }
     fn reset(&mut self) {
@@ -912,16 +904,16 @@ mod tests {
         let mut m1 = epsilon(|i: i32| i + 1);
         assert_eq!(m1.init_one(1), Ext::One(2));
         assert_eq!(m1.init_one(-4), Ext::One(-3));
-        assert_eq!(m1.update('a'), Ext::None);
-        assert_eq!(m1.update('b'), Ext::None);
+        assert_eq!(m1.update_val('a'), Ext::None);
+        assert_eq!(m1.update_val('b'), Ext::None);
         let mut m2 = epsilon(|_i: i32| 0);
-        assert_eq!(m2.update('a'), Ext::None);
-        assert_eq!(m2.update('a'), Ext::None);
+        assert_eq!(m2.update_val('a'), Ext::None);
+        assert_eq!(m2.update_val('a'), Ext::None);
         assert_eq!(m2.init_one(3), Ext::One(0));
         let mut m3 = epsilon(|s: String| s + "ab");
         assert_eq!(m3.init_one("xyz".to_owned()), Ext::One("xyzab".to_owned()));
-        assert_eq!(m3.update('a'), Ext::None);
-        assert_eq!(m3.update('a'), Ext::None);
+        assert_eq!(m3.update_val('a'), Ext::None);
+        assert_eq!(m3.update_val('a'), Ext::None);
     }
     #[test]
     fn test_epsilon_process() {
@@ -950,27 +942,27 @@ mod tests {
     #[test]
     fn test_atom() {
         let mut m = atom(
-            |ch: char| ch.is_ascii_digit(),
+            |ch: &char| ch.is_ascii_digit(),
             |i, ch| format!("{}{}", i, ch),
         );
-        assert_eq!(m.update('a'), Ext::None);
+        assert_eq!(m.update_val('a'), Ext::None);
         assert_eq!(m.init_one("x".to_string()), Ext::None);
-        assert_eq!(m.update('1'), Ext::One("x1".to_string()));
-        assert_eq!(m.update('2'), Ext::None);
+        assert_eq!(m.update_val('1'), Ext::One("x1".to_string()));
+        assert_eq!(m.update_val('2'), Ext::None);
         assert_eq!(m.init_one("x".to_string()), Ext::None);
         assert_eq!(m.init_one("y".to_string()), Ext::None);
-        assert_eq!(m.update('1'), Ext::Many);
-        assert_eq!(m.update('2'), Ext::None);
-        assert_eq!(m.update('3'), Ext::None);
+        assert_eq!(m.update_val('1'), Ext::Many);
+        assert_eq!(m.update_val('2'), Ext::None);
+        assert_eq!(m.update_val('3'), Ext::None);
         assert_eq!(m.init_one("".to_string()), Ext::None);
-        assert_eq!(m.update('1'), Ext::One("1".to_string()));
+        assert_eq!(m.update_val('1'), Ext::One("1".to_string()));
     }
     #[test]
     fn test_atom_restartable() {
-        let m1 = atom(|ch| ch == 'b', |i, _ch| i + 2);
+        let m1 = atom(|&ch| ch == 'b', |i, _ch| i + 2);
         let m2 = atom(
-            |ch| ch == 'b' || ch == 'c',
-            |i, ch| {
+            |&ch| ch == 'b' || ch == 'c',
+            |i, &ch| {
                 if ch == 'b' {
                     i + 2
                 } else {
@@ -1034,7 +1026,7 @@ mod tests {
     #[test]
     fn test_top_wrapper() {
         let m1 = epsilon(|i: i32| i + 2);
-        let m2 = atom(|ch: char| ch == 'a', |i, _ch| i + 3);
+        let m2 = atom(|&ch: &char| ch == 'a', |i, _ch| i + 3);
         let m3 = union(m1.clone(), m2.clone());
         let m4 = union(top(m1.clone()), top(top(m2.clone())));
         let t1 = top(m1.clone());
