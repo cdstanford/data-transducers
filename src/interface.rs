@@ -31,7 +31,7 @@ pub enum RInput<I, D> {
     Item(D),
 }
 
-pub trait Transducer<I, D, O>: Clone {
+pub trait Transducer<I, D, O> {
     /* FUNCTIONALITY TO IMPLEMENT */
 
     // Computation
@@ -82,7 +82,10 @@ pub trait Transducer<I, D, O>: Clone {
     // Note: this implementation is most efficient if self has not been modified;
     // if self has a lot of state it clones that state unnecessarily.
     // However this is only used in testing right now, so not worth optimizing.
-    fn spawn_empty(&self) -> Self {
+    fn spawn_empty(&self) -> Self
+    where
+        Self: Clone,
+    {
         let mut result = self.clone();
         result.reset();
         result
@@ -135,7 +138,7 @@ pub trait Transducer<I, D, O>: Clone {
     ) -> Box<dyn Iterator<Item = Ext<O>> + 'a>
     where
         Strm: Iterator<Item = RInput<I, D>> + 'a,
-        Self: Sized,
+        Self: Clone + Sized,
         I: Debug,
         D: Clone + Debug,
         O: Debug,
@@ -168,7 +171,7 @@ pub trait Transducer<I, D, O>: Clone {
     fn restartability_holds_for<'a, Strm>(&'a self, strm: Strm) -> bool
     where
         Strm: Iterator<Item = RInput<I, D>> + Clone + 'a,
-        Self: Sized,
+        Self: Clone + Sized,
         I: Debug,
         D: Clone + Debug,
         O: Debug + Eq,

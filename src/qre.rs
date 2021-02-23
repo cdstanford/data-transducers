@@ -156,7 +156,6 @@ where
 }
 pub fn atom_univ<I, D, O, F>(action: F) -> impl Transducer<I, D, O>
 where
-    I: Clone,
     F: FnClone2<I, D, O>,
 {
     atom(|_d| true, action)
@@ -167,10 +166,7 @@ where
 {
     atom(guard, |(), _d| ())
 }
-pub fn atom_iden<I, D>() -> impl Transducer<I, D, I>
-where
-    I: Clone,
-{
+pub fn atom_iden<I, D>() -> impl Transducer<I, D, I> {
     atom_univ(|i, _d| i)
 }
 pub fn atom_item_iden<D>() -> impl Transducer<(), D, D> {
@@ -194,7 +190,6 @@ where
 }
 impl<I, D, O, G, F> Transducer<I, D, O> for Atom<I, D, O, G, F>
 where
-    I: Clone,
     G: FnClone1<D, bool>,
     F: FnClone2<I, D, O>,
 {
@@ -253,8 +248,8 @@ where
 
 impl<I, D, O, M1, M2> Clone for Union<I, D, O, M1, M2>
 where
-    M1: Transducer<I, D, O>,
-    M2: Transducer<I, D, O>,
+    M1: Transducer<I, D, O> + Clone,
+    M2: Transducer<I, D, O> + Clone,
 {
     fn clone(&self) -> Self {
         union(self.m1.clone(), self.m2.clone())
@@ -333,8 +328,8 @@ where
 
 impl<I, D, O1, O2, M1, M2> Clone for ParComp<I, D, O1, O2, M1, M2>
 where
-    M1: Transducer<I, D, O1>,
-    M2: Transducer<I, D, O2>,
+    M1: Transducer<I, D, O1> + Clone,
+    M2: Transducer<I, D, O2> + Clone,
 {
     fn clone(&self) -> Self {
         parcomp(self.m1.clone(), self.m2.clone())
@@ -425,8 +420,8 @@ where
 
 impl<D, X, Y, Z, M1, M2> Clone for Concat<D, X, Y, Z, M1, M2>
 where
-    M1: Transducer<X, D, Y>,
-    M2: Transducer<Y, D, Z>,
+    M1: Transducer<X, D, Y> + Clone,
+    M2: Transducer<Y, D, Z> + Clone,
 {
     fn clone(&self) -> Self {
         concat(self.m1.clone(), self.m2.clone())
@@ -493,8 +488,8 @@ where
     M: Transducer<X, D, X>,
 {
     m: M,
-    // The accumulation of values we have .init() into m
-    istate: Ext<X>,
+    // Tracks the accumulation of values we have .init() into m
+    istate: Ext<()>,
     // True if m produced output in response to an .init() (degenerate case),
     // false if it does not produce such output, None if this is not known
     // yet.
@@ -503,6 +498,7 @@ where
     // context, which is not true in general but holds due to the requirement
     // that M is restartable.
     loopy: Option<bool>,
+    ph_x: PhantomData<X>,
     ph_d: PhantomData<D>,
 }
 pub fn iterate<X, D, M>(m: M) -> Iterate<X, D, M>
@@ -513,19 +509,18 @@ where
     assert!(m.is_restartable());
     let istate = Ext::None;
     let loopy = None;
-    Iterate { m, istate, loopy, ph_d: PhantomData }
+    Iterate { m, istate, loopy, ph_x: PhantomData, ph_d: PhantomData }
 }
 
 impl<X, D, M> Clone for Iterate<X, D, M>
 where
-    X: Clone,
-    M: Transducer<X, D, X>,
+    M: Transducer<X, D, X> + Clone,
 {
     fn clone(&self) -> Self {
         let m = self.m.clone();
-        let istate = self.istate.clone();
+        let istate = self.istate;
         let loopy = self.loopy;
-        Iterate { m, istate, loopy, ph_d: PhantomData }
+        Iterate { m, istate, loopy, ph_x: PhantomData, ph_d: PhantomData }
     }
 }
 impl<X, D, M> Transducer<X, D, X> for Iterate<X, D, M>
@@ -543,16 +538,17 @@ where
                     self.istate = Ext::Many;
                     assert_eq!(self.m.init(Ext::Many), Ext::Many);
                 } else if !self.istate.is_many() {
+                    self.istate = Ext::Many;
                     self.m.init(Ext::Many);
                 }
                 Ext::Many
             }
             Some(false) => {
                 if cfg!(debug_assertions) {
-                    self.istate += i.clone();
+                    self.istate += i.to_unit();
                     assert_eq!(self.m.init(i), Ext::None);
                 } else if !self.istate.is_many() {
-                    self.istate += i.clone();
+                    self.istate += i.to_unit();
                     self.m.init(i);
                 }
                 Ext::None
@@ -560,7 +556,7 @@ where
             None => {
                 // This is where we find out if m is loopy
                 debug_assert!(self.istate.is_none());
-                self.istate = i.clone();
+                self.istate = i.to_unit();
                 let out = self.m.init(i);
                 if out.is_none() {
                     // Not loopy
@@ -580,7 +576,7 @@ where
         let out1 = self.m.update(item);
         let out2 = self.init(out1.clone());
         if out2.is_none() {
-            debug_assert_eq!(self.istate, out1);
+            debug_assert_eq!(self.istate, out1.to_unit());
             out1
         } else {
             // Should only happen if m is loopy
@@ -686,7 +682,7 @@ where
 impl<D, X, Y, Z, M, F> Clone for Aggregate<D, X, Y, Z, M, F>
 where
     Z: Clone,
-    M: Transducer<X, D, Y>,
+    M: Transducer<X, D, Y> + Clone,
     F: FnClone2<Z, Y, Z>,
 {
     fn clone(&self) -> Self {
@@ -832,7 +828,7 @@ where
 
 impl<I, D, O, M> Clone for TopWrapper<I, D, O, M>
 where
-    M: Transducer<I, D, O>,
+    M: Transducer<I, D, O> + Clone,
 {
     fn clone(&self) -> Self {
         top(self.m.clone())

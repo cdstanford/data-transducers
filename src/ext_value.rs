@@ -60,6 +60,13 @@ impl<T> Ext<T> {
             Ext::Many => (Ext::Many, Ext::Many),
         }
     }
+    pub fn to_unit(&self) -> Ext<()> {
+        match self {
+            Ext::None => Ext::None,
+            Ext::One(_) => Ext::One(()),
+            Ext::Many => Ext::Many,
+        }
+    }
 }
 
 /* Default value and from/to relationships */
