@@ -666,7 +666,7 @@ where
     M: Transducer<X, D, Y>,
     F: FnClone2<Z, Y, Z>,
 {
-    // Auxiliary function
+    // Auxiliary function used by both .init and .update
     // Update the aggregate and return the new result (if any)
     fn update_agg(&mut self, y: Ext<Y>) -> Ext<Z> {
         if y.is_none() {
