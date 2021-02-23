@@ -86,10 +86,101 @@ where
     Implements the Transducer interface.
 */
 
-pub struct DataTransducer<I, Q, O, D> {
+pub struct DataTransducer<I, Q, O, D, FI, FO>
+where
+    FI: Fn(I) -> Q,
+    FO: Fn(&Q) -> O,
+{
     istate: State<I>,
     fstate: State<O>,
+    init_fun: FI,
+    fin_fun: FO,
     states: Vec<State<Q>>,
     transitions: Vec<Box<dyn Transition<Q>>>,
     ph_d: PhantomData<D>,
+}
+
+impl<I, Q, O, D, FI, FO> DataTransducer<I, Q, O, D, FI, FO>
+where
+    FI: Fn(I) -> Q,
+    FO: Fn(&Q) -> O,
+{
+    fn new(init_fun: FI, fin_fun: FO) -> Self {
+        Self {
+            istate: Rc::new(RefCell::new(Ext::None)),
+            fstate: Rc::new(RefCell::new(Ext::None)),
+            init_fun,
+            fin_fun,
+            states: Vec::new(),
+            transitions: Vec::new(),
+            ph_d: PhantomData,
+        }
+    }
+    fn add_state(&mut self, s: State<Q>) {
+        self.states.push(s);
+    }
+    fn add_transition<Tr>(&mut self, tr: Tr)
+    where
+        Tr: Transition<Q> + 'static,
+    {
+        // PRECONDITION: Transition<Q> sources and targets must
+        // already have been added to the machine.
+        // TODO: can we check this using debug_assert!() ?
+        self.transitions.push(Box::new(tr));
+    }
+}
+
+impl<I, Q, O, D, FI, FO> Clone for DataTransducer<I, Q, O, D, FI, FO>
+where
+    I: Clone,
+    Q: Clone,
+    O: Clone,
+    FI: Fn(I) -> Q + Clone,
+    FO: Fn(&Q) -> O + Clone,
+{
+    fn clone(&self) -> Self {
+        // TODO: There is a problem here.
+        // How do we clone transitions? When they have source references,
+        // it is not clear how to do so.
+        unimplemented!()
+    }
+}
+
+impl<I, Q, O, D, FI, FO> Transducer<I, D, O>
+    for DataTransducer<I, Q, O, D, FI, FO>
+where
+    FI: Fn(I) -> Q,
+    FO: Fn(&Q) -> O,
+{
+    fn init(&mut self, i: Ext<I>) -> Ext<O> {
+        // TODO
+        Ext::None
+    }
+    fn update(&mut self, item: &D) -> Ext<O> {
+        // TODO
+        Ext::None
+    }
+    fn reset(&mut self) {
+        self.istate.replace(Ext::None);
+        self.fstate.replace(Ext::None);
+        for state in &self.states {
+            state.replace(Ext::None);
+        }
+    }
+
+    fn is_epsilon(&self) -> bool {
+        // TODO
+        unimplemented!()
+    }
+    fn is_restartable(&self) -> bool {
+        // TODO: write the (complex) decision procedure which determines
+        // this? Unfortunately PSPACE-complete.
+        unimplemented!()
+    }
+    fn n_states(&self) -> usize {
+        self.states.len() + 2
+    }
+    fn n_transs(&self) -> usize {
+        self.transitions.len() + 2
+    }
 }
