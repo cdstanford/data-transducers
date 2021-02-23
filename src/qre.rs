@@ -17,19 +17,6 @@ use std::marker::PhantomData;
 use std::mem;
 
 /*
-    Functions in the transducer need to be clonable --
-    we define convenience traits to summarize that.
-*/
-pub trait FnClone0<O>: Fn() -> O + Clone {}
-impl<O, F: Fn() -> O + Clone> FnClone0<O> for F {}
-
-pub trait FnClone1<I, O>: Fn(I) -> O + Clone {}
-impl<I, O, F: Fn(I) -> O + Clone> FnClone1<I, O> for F {}
-
-pub trait FnClone2<I1, I2, O>: Fn(I1, I2) -> O + Clone {}
-impl<I1, I2, O, F: Fn(I1, I2) -> O + Clone> FnClone2<I1, I2, O> for F {}
-
-/*
     QRE epsilon
 
     Base construct which processes no data and immediately produces output
@@ -46,7 +33,7 @@ impl<I1, I2, O, F: Fn(I1, I2) -> O + Clone> FnClone2<I1, I2, O> for F {}
 
 pub struct Epsilon<I, D, O, F>
 where
-    F: FnClone1<I, O>,
+    F: Fn(I) -> O,
 {
     action: F,
     ph_i: PhantomData<I>,
@@ -55,7 +42,7 @@ where
 }
 pub fn epsilon<I, D, O, F>(action: F) -> Epsilon<I, D, O, F>
 where
-    F: FnClone1<I, O>,
+    F: Fn(I) -> O,
 {
     Epsilon { action, ph_i: PhantomData, ph_d: PhantomData, ph_o: PhantomData }
 }
@@ -71,7 +58,7 @@ where
 
 impl<I, D, O, F> Clone for Epsilon<I, D, O, F>
 where
-    F: FnClone1<I, O>,
+    F: Fn(I) -> O + Clone,
 {
     fn clone(&self) -> Self {
         epsilon(self.action.clone())
@@ -79,7 +66,7 @@ where
 }
 impl<I, D, O, F> Transducer<I, D, O> for Epsilon<I, D, O, F>
 where
-    F: FnClone1<I, O>,
+    F: Fn(I) -> O,
 {
     fn init(&mut self, i: Ext<I>) -> Ext<O> {
         ext_value::apply1(|x| (self.action)(x), i)
@@ -137,8 +124,8 @@ where
 
 pub struct Atom<I, D, O, G, F>
 where
-    G: FnClone1<D, bool>,
-    F: FnClone2<I, D, O>,
+    G: Fn(D) -> bool,
+    F: Fn(I, D) -> O,
 {
     guard: G,
     action: F,
@@ -148,21 +135,21 @@ where
 }
 pub fn atom<I, D, O, G, F>(guard: G, action: F) -> Atom<I, D, O, G, F>
 where
-    G: FnClone1<D, bool>,
-    F: FnClone2<I, D, O>,
+    G: Fn(D) -> bool,
+    F: Fn(I, D) -> O,
 {
     let istate = Ext::None;
     Atom { guard, action, istate, ph_d: PhantomData, ph_o: PhantomData }
 }
 pub fn atom_univ<I, D, O, F>(action: F) -> impl Transducer<I, D, O>
 where
-    F: FnClone2<I, D, O>,
+    F: Fn(I, D) -> O,
 {
     atom(|_d| true, action)
 }
 pub fn atom_guard<D, G>(guard: G) -> impl Transducer<(), D, ()>
 where
-    G: FnClone1<D, bool>,
+    G: Fn(D) -> bool,
 {
     atom(guard, |(), _d| ())
 }
@@ -179,8 +166,8 @@ pub fn atom_unit<D>() -> impl Transducer<(), D, ()> {
 impl<I, D, O, G, F> Clone for Atom<I, D, O, G, F>
 where
     I: Clone,
-    G: FnClone1<D, bool>,
-    F: FnClone2<I, D, O>,
+    G: Fn(D) -> bool + Clone,
+    F: Fn(I, D) -> O + Clone,
 {
     fn clone(&self) -> Self {
         let mut new = atom(self.guard.clone(), self.action.clone());
@@ -190,8 +177,8 @@ where
 }
 impl<I, D, O, G, F> Transducer<I, D, O> for Atom<I, D, O, G, F>
 where
-    G: FnClone1<D, bool>,
-    F: FnClone2<I, D, O>,
+    G: Fn(D) -> bool,
+    F: Fn(I, D) -> O,
 {
     fn init(&mut self, i: Ext<I>) -> Ext<O> {
         self.istate += i;
@@ -632,7 +619,7 @@ where
 pub struct Aggregate<D, X, Y, Z, M, F>
 where
     M: Transducer<X, D, Y>,
-    F: FnClone2<Z, Y, Z>,
+    F: Fn(Z, Y) -> Z,
 {
     m: M,
     agg_fun: F,
@@ -648,7 +635,7 @@ pub fn aggregate<D, X, Y, Z, M, F>(
 ) -> Aggregate<D, X, Y, Z, M, F>
 where
     M: Transducer<X, D, Y>,
-    F: FnClone2<Z, Y, Z>,
+    F: Fn(Z, Y) -> Z,
 {
     Aggregate {
         m,
@@ -664,7 +651,7 @@ impl<D, X, Y, Z, M, F> Aggregate<D, X, Y, Z, M, F>
 where
     Z: Clone,
     M: Transducer<X, D, Y>,
-    F: FnClone2<Z, Y, Z>,
+    F: Fn(Z, Y) -> Z,
 {
     // Auxiliary function used by both .init and .update
     // Update the aggregate and return the new result (if any)
@@ -683,7 +670,7 @@ impl<D, X, Y, Z, M, F> Clone for Aggregate<D, X, Y, Z, M, F>
 where
     Z: Clone,
     M: Transducer<X, D, Y> + Clone,
-    F: FnClone2<Z, Y, Z>,
+    F: Fn(Z, Y) -> Z + Clone,
 {
     fn clone(&self) -> Self {
         let mut result = aggregate(self.m.clone(), self.agg_fun.clone());
@@ -695,7 +682,7 @@ impl<D, X, Y, Z, M, F> Transducer<(X, Z), D, Z> for Aggregate<D, X, Y, Z, M, F>
 where
     Z: Clone,
     M: Transducer<X, D, Y>,
-    F: FnClone2<Z, Y, Z>,
+    F: Fn(Z, Y) -> Z,
 {
     fn init(&mut self, i: Ext<(X, Z)>) -> Ext<Z> {
         let (x, z) = i.split(|(x, z)| (x, z));
@@ -765,7 +752,7 @@ where
 pub fn map<D, E, F>(map_fun: F) -> impl Transducer<(), D, E>
 where
     D: Clone,
-    F: FnClone1<D, E>,
+    F: Fn(D) -> E,
 {
     concat(stream_iden(), atom_univ(move |(), d| map_fun(d)))
 }
@@ -780,7 +767,7 @@ where
     D: Clone,
     M1: Transducer<I, D, O1>,
     M2: Transducer<I, D, O2>,
-    F: FnClone2<O1, O2, O>,
+    F: Fn(O1, O2) -> O,
 {
     concat(parcomp(m1, m2), epsilon(move |(o1, o2)| op(o1, o2)))
 }
