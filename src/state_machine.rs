@@ -23,6 +23,7 @@
 
 use super::ext_value::{self, Ext};
 use super::interface::Transducer;
+use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 
 /*
@@ -55,6 +56,21 @@ where
     ph_d: PhantomData<D>,
 }
 
+impl<Q, D, G, F> Debug for Trans1<Q, D, G, F>
+where
+    G: Fn(&D) -> bool,
+    F: Fn(&D, &Q) -> Q,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Trans1")
+            .field("source", &self.source)
+            .field("target", &self.target)
+            // .field("guard", &"<Fn(&D) -> bool>")
+            // .field("action", &"<Fn(&D, &Q) -> Q>")
+            .finish()
+    }
+}
+
 struct Trans2<Q, D, G, F>
 where
     G: Fn(&D) -> bool,
@@ -69,7 +85,23 @@ where
     ph_d: PhantomData<D>,
 }
 
-pub trait Transition<D, Q> {
+impl<Q, D, G, F> Debug for Trans2<Q, D, G, F>
+where
+    G: Fn(&D) -> bool,
+    F: Fn(&D, &Q, &Q) -> Q,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Trans1")
+            .field("source1", &self.source1)
+            .field("source2", &self.source2)
+            .field("target", &self.target)
+            // .field("guard", &"<Fn(&D) -> bool>")
+            // .field("action", &"<Fn(&D, &Q, &Q) -> Q>")
+            .finish()
+    }
+}
+
+pub trait Transition<D, Q>: Debug {
     fn source_ids(&self) -> Vec<StateId>;
     fn target_id(&self) -> StateId;
     fn is_active(&self, item: &D) -> bool;
@@ -85,6 +117,7 @@ pub trait Transition<D, Q> {
         result
     }
 }
+
 impl<Q, D, G, F> Transition<D, Q> for Trans1<Q, D, G, F>
 where
     G: Fn(&D) -> bool,
@@ -181,6 +214,21 @@ where
         let result = Self { states, updates, epsilons, eps_out, ph_d };
         debug_assert!(result.invariant());
         result
+    }
+}
+
+impl<Q, D> Debug for DataTransducer<Q, D>
+where
+    Q: Clone + Debug + 'static,
+    D: Debug + 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DataTransducer")
+            .field("states", &self.states)
+            .field("updates", &self.updates)
+            .field("epsilons", &self.epsilons)
+            .field("eps_out", &self.eps_out)
+            .finish()
     }
 }
 
@@ -385,7 +433,9 @@ where
         // and return new states.
         let mut new_states = vec![Ext::None; self.states.len()];
         for tr in &self.updates {
-            new_states[tr.target_id()] += tr.eval(item, &self.states);
+            if tr.is_active(item) {
+                new_states[tr.target_id()] += tr.eval(item, &self.states);
+            }
         }
         self.states = new_states;
     }
@@ -432,3 +482,57 @@ where
         self.updates.len() + self.epsilons.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type ExQ = usize;
+    type ExD = (char, usize);
+
+    #[test]
+    fn test_popl19_ex1() {
+        // Initialize
+        let mut m = DataTransducer::<ExQ, ExD>::new();
+        m.set_nstates(4);
+        m.add_iden(0, 0);
+        m.add_transition1(0, 3, |&d| d.0 == 'a', |&d, _| d.1);
+        m.add_transition1(3, 2, |&d| d.0 == 'a', |&d, &q| d.1 + q);
+        m.add_transition1(2, 1, |&d| d.0 == 'a', |&d, &q| d.1 + q);
+        m.add_transition1(2, 2, |&d| d.0 == 'b', |_, &q| q);
+        m.add_transition1(3, 3, |&d| d.0 == 'b', |_, &q| q);
+        // Test
+        assert_eq!(m.init_one(0), Ext::None);
+        println!("{:?}", m);
+        assert_eq!(m.update(&('a', 6)), Ext::None);
+        println!("{:?}", m);
+        assert_eq!(m.update(&('b', 2)), Ext::None);
+        println!("{:?}", m);
+        assert_eq!(m.update(&('a', 5)), Ext::None);
+        println!("{:?}", m);
+        assert_eq!(m.update(&('a', 7)), Ext::One(18));
+        println!("{:?}", m);
+        assert_eq!(m.update(&('b', 2)), Ext::None);
+        println!("{:?}", m);
+        assert_eq!(m.update(&('a', 8)), Ext::One(20));
+        println!("{:?}", m);
+        assert_eq!(m.update(&('#', 0)), Ext::None);
+        println!("{:?}", m);
+        assert_eq!(m.update(&('b', 2)), Ext::None);
+        println!("{:?}", m);
+        assert_eq!(m.update(&('a', 2)), Ext::None);
+        println!("{:?}", m);
+        assert_eq!(m.update(&('a', 2)), Ext::None);
+        println!("{:?}", m);
+        assert_eq!(m.update(&('a', 2)), Ext::One(6));
+        println!("{:?}", m);
+        assert_eq!(m.update(&('a', 2)), Ext::One(6));
+    }
+}
+
+/*
+    Some next TODOs:
+    - write test update_print to avoid all the double lines in the above test
+    - implement Debug directly for DataTransducer using .source_ids, .target_ids
+      so it is not required for Transition
+*/
