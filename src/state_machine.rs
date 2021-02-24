@@ -238,12 +238,15 @@ impl<Q: Clone, D> DataTransducer<Q, D> {
         debug_assert!(self.invariant());
     }
 
-    /* Utility */
+    /* Utility / conveniences */
     fn add_to_istate(&mut self, i: Ext<Q>) {
         self.states[0] += i
     }
     fn get_fstate(&self) -> Ext<Q> {
         self.states[1].clone()
+    }
+    fn eval_epsilon(&self, tid: TransId) -> Ext<Q> {
+        self.epsilons[tid].eval(&(), &self.states)
     }
 
     /* Invariant checks and preconditions */
@@ -289,9 +292,36 @@ impl<Q: Clone, D> DataTransducer<Q, D> {
     fn eval_epsilons(&mut self) {
         // The main streaming algorithm for updating the data transducer
         // following least-fixed-point semantics, and implemented using
-        // worklists.
-        // TODO
-        unimplemented!()
+        // a transition worklist.
+        // Note on efficiency: it is slightly more efficient to also
+        // keep a count of how many input states are Ext::None for each
+        // transition, and only add a transition to the worklist when this
+        // number increases. But this only really matters for transitions with
+        // more than one or two source states.
+        let n_epsilons = self.epsilons.len();
+        let mut trans_wklist: Vec<TransId> = (0..n_epsilons).collect();
+        let mut trans_vals: Vec<Ext<()>> = vec![Ext::None; n_epsilons];
+        while let Some(tr_id) = trans_wklist.pop() {
+            let cur = trans_vals[tr_id];
+            let tgt_id = self.epsilons[tr_id].target_id();
+            // Only evaluate the transition if its value may cause a change
+            if cur.is_many() || self.states[tgt_id].is_many() {
+                continue;
+            }
+            let new = self.eval_epsilon(tr_id);
+            if new.is_none() || new.is_one() && cur.is_one() {
+                continue;
+            }
+            // Here we know: the value of the transition has increased
+            // (from None to One(x), None to Many, or One(x) to Many)
+            // AND the target state is either None or One(x), so should
+            // be increased by One(x), Many, or Many respectively
+            trans_vals[tr_id] = new.to_unit();
+            self.states[tgt_id] += new;
+            for &eps_id in &self.eps_out[tgt_id] {
+                trans_wklist.push(eps_id);
+            }
+        }
     }
     fn eval_updates(&mut self, item: &D) {
         // The update logic prior to evaluating epsilons -- not as complex
