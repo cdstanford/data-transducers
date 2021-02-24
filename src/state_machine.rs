@@ -21,14 +21,13 @@
     their values). Overall, fixing Q is cleaner design.
 */
 
-use super::ext_value::{self, Ext};
+use super::ext_value::Ext;
 use super::interface::Transducer;
-use std::cell::RefCell;
-use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
-use std::rc::Rc;
 
 /*
+    TODO: Update documentation here
+
     States are reference-counted refcells.
     This allows transitions to have direct shared pointers to their source
     and target states.
@@ -40,18 +39,35 @@ use std::rc::Rc;
     trait. This is because transitions are parameterized by function types.
 */
 
-type State<Q> = Rc<RefCell<Ext<Q>>>;
+type StateId = usize;
 
 pub struct Trans1<Q, D, G, F>
 where
     G: Fn(&D) -> bool,
     F: Fn(&D, &Q) -> Q,
 {
-    source: State<Q>,
-    target: State<Q>,
+    source: StateId,
+    target: StateId,
     guard: G,
     action: F,
+    ph_q: PhantomData<Q>,
     ph_d: PhantomData<D>,
+}
+impl<Q, D, G, F> Trans1<Q, D, G, F>
+where
+    G: Fn(&D) -> bool,
+    F: Fn(&D, &Q) -> Q,
+{
+    pub fn new(source: StateId, target: StateId, guard: G, action: F) -> Self {
+        Self {
+            source,
+            target,
+            guard,
+            action,
+            ph_q: PhantomData,
+            ph_d: PhantomData,
+        }
+    }
 }
 
 pub struct Trans2<Q, D, G, F>
@@ -59,128 +75,191 @@ where
     G: Fn(&D) -> bool,
     F: Fn(&D, &Q, &Q) -> Q,
 {
-    source1: State<Q>,
-    source2: State<Q>,
-    target: State<Q>,
+    source1: StateId,
+    source2: StateId,
+    target: StateId,
     guard: G,
     action: F,
+    ph_q: PhantomData<Q>,
     ph_d: PhantomData<D>,
 }
-
-trait Transition<Q> {}
-impl<Q, D, G, F> Transition<Q> for Trans1<Q, D, G, F>
-where
-    G: Fn(&D) -> bool,
-    F: Fn(&D, &Q) -> Q,
-{
-}
-impl<Q, D, G, F> Transition<Q> for Trans2<Q, D, G, F>
+impl<Q, D, G, F> Trans2<Q, D, G, F>
 where
     G: Fn(&D) -> bool,
     F: Fn(&D, &Q, &Q) -> Q,
 {
+    pub fn new(
+        source1: StateId,
+        source2: StateId,
+        target: StateId,
+        guard: G,
+        action: F,
+    ) -> Self {
+        Self {
+            source1,
+            source2,
+            target,
+            guard,
+            action,
+            ph_q: PhantomData,
+            ph_d: PhantomData,
+        }
+    }
+}
+
+pub trait Transition<D, Q> {
+    fn source_ids(&self) -> Vec<StateId>;
+    fn target_id(&self) -> StateId;
+}
+impl<Q, D, G, F> Transition<D, Q> for Trans1<Q, D, G, F>
+where
+    G: Fn(&D) -> bool,
+    F: Fn(&D, &Q) -> Q,
+{
+    fn source_ids(&self) -> Vec<StateId> {
+        vec![self.source]
+    }
+    fn target_id(&self) -> StateId {
+        self.target
+    }
+}
+impl<Q, D, G, F> Transition<D, Q> for Trans2<Q, D, G, F>
+where
+    G: Fn(&D) -> bool,
+    F: Fn(&D, &Q, &Q) -> Q,
+{
+    fn source_ids(&self) -> Vec<StateId> {
+        vec![self.source1, self.source2]
+    }
+    fn target_id(&self) -> StateId {
+        self.target
+    }
 }
 
 /*
     The main DataTransducer state machine.
     Implements the Transducer interface.
+
+    For now, DataTransducer does not implement Clone, due to the transitions
+    being dynamic Trait objects.
 */
 
-pub struct DataTransducer<I, Q, O, D, FI, FO>
-where
-    FI: Fn(I) -> Q,
-    FO: Fn(&Q) -> O,
-{
-    istate: State<I>,
-    fstate: State<O>,
-    init_fun: FI,
-    fin_fun: FO,
-    states: Vec<State<Q>>,
-    transitions: Vec<Box<dyn Transition<Q>>>,
+pub struct DataTransducer<Q: Clone, D> {
+    // Initial state: states[0]
+    // Final state: states[1]
+    states: Vec<Ext<Q>>,
+    updates: Vec<Box<dyn Transition<D, Q>>>,
+    epsilons: Vec<Box<dyn Transition<(), Q>>>,
     ph_d: PhantomData<D>,
 }
 
-impl<I, Q, O, D, FI, FO> DataTransducer<I, Q, O, D, FI, FO>
-where
-    FI: Fn(I) -> Q,
-    FO: Fn(&Q) -> O,
-{
-    fn new(init_fun: FI, fin_fun: FO) -> Self {
-        Self {
-            istate: Rc::new(RefCell::new(Ext::None)),
-            fstate: Rc::new(RefCell::new(Ext::None)),
-            init_fun,
-            fin_fun,
-            states: Vec::new(),
-            transitions: Vec::new(),
-            ph_d: PhantomData,
+impl<Q: Clone, D> Default for DataTransducer<Q, D> {
+    fn default() -> Self {
+        let states = vec![Ext::None, Ext::None];
+        let updates = vec![];
+        let epsilons = vec![];
+        Self { states, updates, epsilons, ph_d: PhantomData }
+    }
+}
+
+impl<Q: Clone, D> DataTransducer<Q, D> {
+    /* Initialization and adding states */
+    pub fn new() -> Self {
+        Default::default()
+    }
+    pub fn add_state(&mut self) {
+        debug_assert!(self.states.len() >= 2);
+        self.states.push(Ext::None);
+    }
+    pub fn add_transition<Tr>(&mut self, tr: Tr)
+    where
+        Tr: Transition<D, Q> + 'static,
+    {
+        self.assert_trans_precondition(&tr);
+        self.updates.push(Box::new(tr));
+    }
+    pub fn add_epsilon<Tr>(&mut self, tr: Tr)
+    where
+        Tr: Transition<(), Q> + 'static,
+    {
+        self.assert_trans_precondition(&tr);
+        self.epsilons.push(Box::new(tr));
+    }
+
+    /* Utility */
+    fn add_to_istate(&mut self, i: Ext<Q>) {
+        self.states[0] += i
+    }
+    fn get_fstate(&self) -> Ext<Q> {
+        self.states[1].clone()
+    }
+
+    /* Invariant checks and assertions */
+    // TODO
+    // fn assert_invariant(&self) {
+    // }
+    fn assert_trans_precondition<I, Tr>(&self, tr: &Tr)
+    where
+        Tr: Transition<I, Q>,
+    {
+        // PRECONDITION for add_transition() and add_epsilon():
+        // transition sources and targets must
+        // already have been added to the machine.
+        debug_assert!(tr.target_id() <= self.states.len());
+        for &id in &tr.source_ids() {
+            debug_assert!(id <= self.states.len());
         }
     }
-    fn add_state(&mut self, s: State<Q>) {
-        self.states.push(s);
-    }
-    fn add_transition<Tr>(&mut self, tr: Tr)
-    where
-        Tr: Transition<Q> + 'static,
-    {
-        // PRECONDITION: Transition<Q> sources and targets must
-        // already have been added to the machine.
-        // TODO: can we check this using debug_assert!() ?
-        self.transitions.push(Box::new(tr));
-    }
-}
 
-impl<I, Q, O, D, FI, FO> Clone for DataTransducer<I, Q, O, D, FI, FO>
-where
-    I: Clone,
-    Q: Clone,
-    O: Clone,
-    FI: Fn(I) -> Q + Clone,
-    FO: Fn(&Q) -> O + Clone,
-{
-    fn clone(&self) -> Self {
-        // TODO: There is a problem here.
-        // How do we clone transitions? When they have source references,
-        // it is not clear how to do so.
+    /* Streaming Algorithm */
+    fn eval_epsilons(&mut self) {
+        // The main streaming algorithm for updating the data transducer
+        // following least-fixed-point semantics, and implemented using
+        // worklists.
+        // TODO
         unimplemented!()
     }
+    fn eval_updates(&mut self, _item: &D) {
+        // The update logic prior to evaluating epsilons -- not as complex
+        // as eval_epsilons() as here we assume updates only take old states
+        // and return new states.
+        let new_states = vec![Ext::None; self.states.len()];
+        // TODO
+        self.states = new_states;
+    }
 }
 
-impl<I, Q, O, D, FI, FO> Transducer<I, D, O>
-    for DataTransducer<I, Q, O, D, FI, FO>
-where
-    FI: Fn(I) -> Q,
-    FO: Fn(&Q) -> O,
-{
-    fn init(&mut self, i: Ext<I>) -> Ext<O> {
-        // TODO
-        Ext::None
+impl<Q: Clone, D> Transducer<Q, D, Q> for DataTransducer<Q, D> {
+    fn init(&mut self, i: Ext<Q>) -> Ext<Q> {
+        self.add_to_istate(i);
+        self.eval_epsilons();
+        self.get_fstate()
     }
-    fn update(&mut self, item: &D) -> Ext<O> {
-        // TODO
-        Ext::None
+    fn update(&mut self, item: &D) -> Ext<Q> {
+        self.eval_updates(item);
+        self.eval_epsilons();
+        self.get_fstate()
     }
     fn reset(&mut self) {
-        self.istate.replace(Ext::None);
-        self.fstate.replace(Ext::None);
-        for state in &self.states {
-            state.replace(Ext::None);
+        for state in self.states.iter_mut() {
+            *state = Ext::None;
         }
     }
 
     fn is_epsilon(&self) -> bool {
-        // TODO
-        unimplemented!()
+        // The transducer is an epsilon if it only has epsilon transitions
+        self.updates.is_empty()
     }
     fn is_restartable(&self) -> bool {
-        // TODO: write the (complex) decision procedure which determines
-        // this? Unfortunately PSPACE-complete.
+        // TODO: we could implement the decision procedure for this, but it is
+        // rather complex (PSPACE-complete)
         unimplemented!()
     }
     fn n_states(&self) -> usize {
-        self.states.len() + 2
+        debug_assert!(self.states.len() >= 2);
+        self.states.len()
     }
     fn n_transs(&self) -> usize {
-        self.transitions.len() + 2
+        self.updates.len() + self.epsilons.len()
     }
 }
