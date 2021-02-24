@@ -67,6 +67,13 @@ impl<T> Ext<T> {
             Ext::Many => Ext::Many,
         }
     }
+    pub fn as_ref(&self) -> Ext<&T> {
+        match self {
+            Ext::None => Ext::None,
+            Ext::One(x) => Ext::One(&x),
+            Ext::Many => Ext::Many,
+        }
+    }
 }
 
 /* Default value and from/to relationships */

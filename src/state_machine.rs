@@ -21,7 +21,7 @@
     their values). Overall, fixing Q is cleaner design.
 */
 
-use super::ext_value::Ext;
+use super::ext_value::{self, Ext};
 use super::interface::Transducer;
 use std::marker::PhantomData;
 
@@ -110,6 +110,12 @@ where
 pub trait Transition<D, Q> {
     fn source_ids(&self) -> Vec<StateId>;
     fn target_id(&self) -> StateId;
+    fn is_active(&self, item: &D) -> bool;
+    fn eval(&self, item: &D, states: &[Ext<Q>]) -> Ext<Q>;
+
+    fn eval_precond(&self, states: &[Ext<Q>]) -> bool {
+        self.source_ids().iter().all(|&id| id < states.len())
+    }
 }
 impl<Q, D, G, F> Transition<D, Q> for Trans1<Q, D, G, F>
 where
@@ -122,6 +128,16 @@ where
     fn target_id(&self) -> StateId {
         self.target
     }
+    fn is_active(&self, item: &D) -> bool {
+        (self.guard)(item)
+    }
+    fn eval(&self, item: &D, states: &[Ext<Q>]) -> Ext<Q> {
+        debug_assert!(self.eval_precond(states));
+        ext_value::apply1(
+            |q| (self.action)(item, q),
+            states[self.source].as_ref(),
+        )
+    }
 }
 impl<Q, D, G, F> Transition<D, Q> for Trans2<Q, D, G, F>
 where
@@ -133,6 +149,17 @@ where
     }
     fn target_id(&self) -> StateId {
         self.target
+    }
+    fn is_active(&self, item: &D) -> bool {
+        (self.guard)(item)
+    }
+    fn eval(&self, item: &D, states: &[Ext<Q>]) -> Ext<Q> {
+        debug_assert!(self.eval_precond(states));
+        ext_value::apply2(
+            |q1, q2| (self.action)(item, q1, q2),
+            states[self.source1].as_ref(),
+            states[self.source2].as_ref(),
+        )
     }
 }
 
@@ -207,7 +234,7 @@ impl<Q: Clone, D> DataTransducer<Q, D> {
         // already have been added to the machine.
         debug_assert!(tr.target_id() <= self.states.len());
         for &id in &tr.source_ids() {
-            debug_assert!(id <= self.states.len());
+            debug_assert!(id < self.states.len());
         }
     }
 
