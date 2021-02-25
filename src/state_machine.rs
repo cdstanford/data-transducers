@@ -384,8 +384,11 @@ where
     // Add an "identity transition" which preserves a particular state from one
     // timestep to the next. (This is common enough that it's worth exposing
     // specifically in the API.)
-    pub fn add_iden(&mut self, source: usize, target: usize) {
-        self.add_transition1(source, target, |_| true, |_, q| q.clone())
+    pub fn add_iden<G>(&mut self, source: usize, target: usize, guard: G)
+    where
+        G: 'a + Fn(&D) -> bool,
+    {
+        self.add_transition1(source, target, guard, |_, q| q.clone())
     }
     // Add an epsilon transition with one source state
     pub fn add_epsilon1<F>(&mut self, source: usize, target: usize, action: F)
@@ -578,36 +581,137 @@ where
 mod tests {
     use super::*;
 
-    type ExD = (char, usize);
-    type ExQ = usize;
+    type ExD = (char, isize);
+    type ExQ = isize;
+
+    /* Additional methods for testing */
+    impl<D, Q> DataTransducer<'_, D, Q>
+    where
+        D: Debug,
+        Q: Clone + Debug + Eq,
+    {
+        fn init_expect(&mut self, i: Q, o: Ext<Q>) {
+            println!("State: {:?}", self);
+            println!("===== init: {:?} =====", i);
+            println!("Expected output: {:?}", o);
+            assert_eq!(self.init_one(i), o);
+            println!("Output is correct");
+        }
+        fn update_expect(&mut self, d: D, o: Ext<Q>) {
+            println!("State: {:?}", self);
+            println!("===== update: {:?} =====", d);
+            println!("Expected output: {:?}", o);
+            assert_eq!(self.update_val(d), o);
+            println!("Output is correct");
+        }
+    }
 
     #[test]
     fn test_popl19_ex1() {
         // Initialize
         let mut m = DataTransducer::<ExD, ExQ>::new();
         m.set_nstates(4);
-        m.add_iden(0, 0);
-        m.add_transition1(0, 3, |&d| d.0 == 'a', |&d, _| d.1);
-        m.add_transition1(3, 2, |&d| d.0 == 'a', |&d, &q| d.1 + q);
-        m.add_transition1(2, 1, |&d| d.0 == 'a', |&d, &q| d.1 + q);
-        m.add_transition1(2, 2, |&d| d.0 == 'b', |_, &q| q);
-        m.add_transition1(3, 3, |&d| d.0 == 'b', |_, &q| q);
+        // 0: Initial, always set to Ext::One
+        // 1: Final, sum of last three 'a' events
+        // 2: Sum of last two 'a' events
+        // 3: Sum of last 'a' event
+        m.add_iden(0, 0, |_d| true);
+        m.add_iden(2, 2, |&d| d.0 == 'b');
+        m.add_iden(3, 3, |&d| d.0 == 'b');
+        m.add_transition1(0, 3, |&d| d.0 == 'a', |&d, _q| d.1);
+        m.add_transition1(3, 2, |&d| d.0 == 'a', |&d, &q| q + d.1);
+        m.add_transition1(2, 1, |&d| d.0 == 'a', |&d, &q| q + d.1);
         // Test
-        println!("{:?}", m);
-        assert_eq!(m.init_one(0), Ext::None);
-        assert_eq!(m.update_val(('a', 6)), Ext::None);
-        assert_eq!(m.update_val(('b', 2)), Ext::None);
-        assert_eq!(m.update_val(('a', 5)), Ext::None);
-        assert_eq!(m.update_val(('a', 7)), Ext::One(18));
-        assert_eq!(m.update_val(('b', 2)), Ext::None);
-        assert_eq!(m.update_val(('a', 8)), Ext::One(20));
-        println!("{:?}", m);
-        assert_eq!(m.update_val(('#', 0)), Ext::None);
-        assert_eq!(m.update_val(('b', 2)), Ext::None);
-        assert_eq!(m.update_val(('a', 2)), Ext::None);
-        assert_eq!(m.update_val(('a', 2)), Ext::None);
-        assert_eq!(m.update_val(('a', 2)), Ext::One(6));
-        assert_eq!(m.update_val(('a', 0)), Ext::One(4));
-        println!("{:?}", m);
+        m.init_expect(0, Ext::None);
+        m.update_expect(('a', 6), Ext::None);
+        m.update_expect(('b', 2), Ext::None);
+        m.update_expect(('a', 5), Ext::None);
+        m.update_expect(('a', 7), Ext::One(18));
+        m.update_expect(('b', 2), Ext::None);
+        m.update_expect(('a', 8), Ext::One(20));
+        m.update_expect(('#', 0), Ext::None);
+        m.update_expect(('b', 2), Ext::None);
+        m.update_expect(('a', 2), Ext::None);
+        m.update_expect(('a', 2), Ext::None);
+        m.update_expect(('a', 2), Ext::One(6));
+        m.update_expect(('a', 0), Ext::One(4));
+    }
+
+    #[test]
+    fn test_popl19_ex2() {
+        // Initialize
+        let mut m = DataTransducer::<ExD, ExQ>::new();
+        m.set_nstates(4);
+        // 0: Initial, previous window average
+        // 1: Final, end of window average
+        // 2: Sum of 'a' events in current window
+        // 3: Count of 'a' events in current window
+        m.add_iden(0, 0, |&d| d.0 == 'b');
+        m.add_iden(2, 2, |&d| d.0 == 'b');
+        m.add_iden(3, 3, |&d| d.0 == 'b');
+        m.add_transition1(0, 2, |&d| d.0 == 'a', |&d, _q| d.1);
+        m.add_transition1(0, 3, |&d| d.0 == 'a', |_d, _q| 1);
+        m.add_transition1(2, 2, |&d| d.0 == 'a', |&d, &q| q + d.1);
+        m.add_transition1(3, 3, |&d| d.0 == 'a', |_d, &q| q + 1);
+        m.add_transition2(2, 3, 1, |&d| d.0 == '#', |_d, &q2, &q3| q2 / q3);
+        m.add_iden(0, 1, |&d| d.0 == '#');
+        m.add_epsilon1(1, 0, |&q| q);
+        // Test
+        m.init_expect(0, Ext::None);
+        m.update_expect(('b', 2), Ext::None);
+        m.update_expect(('a', 6), Ext::None);
+        m.update_expect(('b', 2), Ext::None);
+        m.update_expect(('a', 8), Ext::None);
+        m.update_expect(('a', 9), Ext::None);
+        // (6 + 8 + 9) / 3 = 7
+        m.update_expect(('#', 0), Ext::One(7));
+        m.update_expect(('b', 2), Ext::None);
+        m.update_expect(('#', 2), Ext::One(7));
+        m.update_expect(('a', 2), Ext::None);
+        m.update_expect(('#', 0), Ext::One(2));
+    }
+
+    #[test]
+    fn test_popl19_ex3() {
+        // Initialize
+        let mut m = DataTransducer::<ExD, ExQ>::new();
+        m.set_nstates(7);
+        // 0: Initial, Ext::One initially and after each '#'
+        // 1: Final, stores the final answer after each '#'
+        // 2: Ext::One if we haven't yet seen an 'a'
+        // 3: Ext::One if we haven't yet seen a 'b'
+        // 4: Max 'a' if we have seen at least one
+        // 5: Max 'b' if we have seen at least one
+        // 6: Ext::One always (used to set state 0 on '#')
+        m.add_epsilon1(0, 2, |_q| 0);
+        m.add_epsilon1(0, 3, |_q| 0);
+        m.add_epsilon1(0, 6, |_q| 0);
+        m.add_iden(2, 2, |&d| d.0 == 'b');
+        m.add_iden(4, 4, |&d| d.0 == 'b');
+        m.add_iden(3, 3, |&d| d.0 == 'a');
+        m.add_iden(5, 5, |&d| d.0 == 'a');
+        m.add_iden(6, 6, |&d| d.0 != '#');
+        m.add_transition1(2, 4, |&d| d.0 == 'a', |&d, _q| d.1);
+        m.add_transition1(4, 4, |&d| d.0 == 'a', |&d, &q| q.max(d.1));
+        m.add_transition1(3, 5, |&d| d.0 == 'b', |&d, _q| d.1);
+        m.add_transition1(5, 5, |&d| d.0 == 'b', |&d, &q| q.max(d.1));
+        m.add_transition2(4, 5, 1, |&d| d.0 == '#', |_d, &q4, &q5| q4 - q5);
+        m.add_transition1(6, 0, |&d| d.0 == '#', |_d, _q| 0);
+        // Test
+        m.init_expect(0, Ext::None);
+        m.update_expect(('b', 2), Ext::None);
+        m.update_expect(('a', 6), Ext::None);
+        m.update_expect(('b', 3), Ext::None);
+        m.update_expect(('b', 1), Ext::None);
+        m.update_expect(('a', 8), Ext::None);
+        m.update_expect(('#', 0), Ext::One(5));
+        m.update_expect(('b', 2), Ext::None);
+        m.update_expect(('#', 2), Ext::None);
+        m.update_expect(('a', 1), Ext::None);
+        m.update_expect(('a', 3), Ext::None);
+        m.update_expect(('#', 2), Ext::None);
+        m.update_expect(('a', 7), Ext::None);
+        m.update_expect(('b', 1), Ext::None);
+        m.update_expect(('#', 0), Ext::One(6));
     }
 }
