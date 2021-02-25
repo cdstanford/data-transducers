@@ -144,7 +144,10 @@ trait Transition<D, Q> {
 // Lightweight Debug implementation
 // This format string is rather incomplete, since function closures
 // do not implement Debug.
-impl<D, Q> Debug for dyn Transition<D, Q> {
+// Note: the + '_ is important because otherwise trait objects default to
+// 'static lifetime.
+// https://stackoverflow.com/questions/63986183/format-requires-static-lifetime
+impl<D, Q> Debug for dyn Transition<D, Q> + '_ {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("[")?;
         for &id in &self.source_ids() {
@@ -263,10 +266,10 @@ fn epsilon_guard<D>(_item: &D) -> bool {
 const ISTATE_ID: StateId = StateId(0);
 const FSTATE_ID: StateId = StateId(1);
 
-pub struct DataTransducer<D, Q>
+pub struct DataTransducer<'a, D, Q>
 where
-    Q: Clone + 'static,
-    D: 'static,
+    Q: 'a + Clone,
+    D: 'a,
 {
     // Initial state: states[0]
     // Final state: states[1]
@@ -274,8 +277,8 @@ where
     // Transitions, divided into those executed on update from old to new states
     // and "epsilon transitions" which define a least fixed point on init and
     // after every update
-    updates: TransList<Box<dyn Transition<D, Q>>>,
-    epsilons: TransList<Box<dyn Transition<(), Q>>>,
+    updates: TransList<Box<dyn Transition<D, Q> + 'a>>,
+    epsilons: TransList<Box<dyn Transition<(), Q> + 'a>>,
     // Store for each state which epsilon-transitions go out from this state
     // (needed for the least fixed point calculation)
     eps_out: StateList<Vec<TransId>>,
@@ -283,10 +286,9 @@ where
     ph_d: PhantomData<D>,
 }
 
-impl<D, Q> Default for DataTransducer<D, Q>
+impl<D, Q> Default for DataTransducer<'_, D, Q>
 where
-    Q: Clone + 'static,
-    D: 'static,
+    Q: Clone,
 {
     fn default() -> Self {
         let states = StateList(vec![Ext::None, Ext::None]);
@@ -300,10 +302,10 @@ where
     }
 }
 
-impl<D, Q> Debug for DataTransducer<D, Q>
+impl<D, Q> Debug for DataTransducer<'_, D, Q>
 where
-    Q: Clone + Debug + 'static,
-    D: Debug + 'static,
+    Q: Clone + Debug,
+    D: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DataTransducer")
@@ -315,10 +317,9 @@ where
     }
 }
 
-impl<D, Q> DataTransducer<D, Q>
+impl<'a, D, Q> DataTransducer<'a, D, Q>
 where
-    Q: Clone + 'static,
-    D: 'static,
+    Q: Clone,
 {
     /* Initialization (forming the states and transitions) */
     pub fn new() -> Self {
@@ -346,8 +347,8 @@ where
         guard: G,
         action: F,
     ) where
-        G: Fn(&D) -> bool + 'static,
-        F: Fn(&D, &Q) -> Q + 'static,
+        G: 'a + Fn(&D) -> bool,
+        F: 'a + Fn(&D, &Q) -> Q,
     {
         self.add_transition_core(Trans1 {
             source: StateId(source),
@@ -367,8 +368,8 @@ where
         guard: G,
         action: F,
     ) where
-        G: Fn(&D) -> bool + 'static,
-        F: Fn(&D, &Q, &Q) -> Q + 'static,
+        G: 'a + Fn(&D) -> bool,
+        F: 'a + Fn(&D, &Q, &Q) -> Q,
     {
         self.add_transition_core(Trans2 {
             source1: StateId(source1),
@@ -389,7 +390,7 @@ where
     // Add an epsilon transition with one source state
     pub fn add_epsilon1<F>(&mut self, source: usize, target: usize, action: F)
     where
-        F: Fn(&Q) -> Q + 'static,
+        F: 'a + Fn(&Q) -> Q,
     {
         self.add_epsilon_core(Trans1 {
             source: StateId(source),
@@ -408,7 +409,7 @@ where
         target: usize,
         action: F,
     ) where
-        F: Fn(&Q, &Q) -> Q + 'static,
+        F: 'a + Fn(&Q, &Q) -> Q,
     {
         self.add_epsilon_core(Trans2 {
             source1: StateId(source1),
@@ -433,7 +434,7 @@ where
     }
     fn add_transition_core<Tr>(&mut self, tr: Tr)
     where
-        Tr: Transition<D, Q> + 'static,
+        Tr: 'a + Transition<D, Q>,
     {
         debug_assert!(self.trans_precond(&tr));
         self.updates.push(Box::new(tr));
@@ -441,7 +442,7 @@ where
     }
     fn add_epsilon_core<Tr>(&mut self, tr: Tr)
     where
-        Tr: Transition<(), Q> + 'static,
+        Tr: 'a + Transition<(), Q>,
     {
         debug_assert!(self.trans_precond(&tr));
         let new_tr_id = TransId(self.epsilons.len());
@@ -532,10 +533,9 @@ where
     }
 }
 
-impl<D, Q> Transducer<Q, D, Q> for DataTransducer<D, Q>
+impl<D, Q> Transducer<Q, D, Q> for DataTransducer<'_, D, Q>
 where
-    Q: Clone + 'static,
-    D: 'static,
+    Q: Clone,
 {
     fn init(&mut self, i: Ext<Q>) -> Ext<Q> {
         self.add_to_istate(i);
