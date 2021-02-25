@@ -25,6 +25,7 @@ use super::ext_value::{self, Ext};
 use super::interface::Transducer;
 use std::fmt::{self, Debug};
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 /*
     States are represented by an Id (index into the state vector of the
@@ -32,6 +33,61 @@ use std::marker::PhantomData;
     keeping states and transitions completely separate and thus
     avoids Rc<RefCell<T> shenanigans.
 
+    We also enforce state IDs as a typing discipline:
+    StateId is a newtype, and we write a StateList type
+    for a vector indexed by StateId. By using Deref coercion, StateList<T> has
+    all the functionality of Vec<T>, **except** that it can't be indexed by
+    a usize, only by a StateId.
+    Conversely, StateId can't be accidentally used to index some other Vec,
+    only a StateList.
+*/
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct StateId(usize);
+
+#[derive(Clone, Debug)]
+struct StateList<T>(Vec<T>);
+impl<T> Deref for StateList<T> {
+    type Target = Vec<T>;
+    fn deref(&self) -> &Vec<T> {
+        &self.0
+    }
+}
+impl<T> DerefMut for StateList<T> {
+    fn deref_mut(&mut self) -> &mut Vec<T> {
+        &mut self.0
+    }
+}
+impl<T> Index<StateId> for StateList<T> {
+    type Output = T;
+    fn index(&self, id: StateId) -> &Self::Output {
+        self.0.index(id.0)
+    }
+}
+impl<T> IndexMut<StateId> for StateList<T> {
+    fn index_mut(&mut self, id: StateId) -> &mut Self::Output {
+        self.0.index_mut(id.0)
+    }
+}
+impl<T> StateList<T> {
+    // Additionally useful things that go together with indexing
+    fn in_range(&self, id: StateId) -> bool {
+        id.0 < self.len()
+    }
+    fn enumerate(&self) -> impl Iterator<Item = (StateId, &T)> {
+        self.iter().enumerate().map(|(i, item)| (StateId(i), item))
+    }
+}
+
+#[test]
+fn test_stateid_index() {
+    let v = StateList(vec![1, 2, 3]);
+    assert_eq!(v[StateId(1)], 2);
+    // The following does not compile:
+    // assert_eq!(v[1], 2);
+}
+
+/*
     Transitions are defined by a guard which says when they are active, and
     an action which says the function applied to the source states to
     give a new result for the target state.
@@ -41,9 +97,7 @@ use std::marker::PhantomData;
     This is because they are functions so do not share a common type.
 */
 
-type StateId = usize;
-
-struct Trans1<Q, D, G, F>
+struct Trans1<D, Q, G, F>
 where
     G: Fn(&D) -> bool,
     F: Fn(&D, &Q) -> Q,
@@ -56,7 +110,7 @@ where
     ph_d: PhantomData<D>,
 }
 
-struct Trans2<Q, D, G, F>
+struct Trans2<D, Q, G, F>
 where
     G: Fn(&D) -> bool,
     F: Fn(&D, &Q, &Q) -> Q,
@@ -70,31 +124,37 @@ where
     ph_d: PhantomData<D>,
 }
 
-pub trait Transition<D, Q> {
+trait Transition<D, Q> {
     fn source_ids(&self) -> Vec<StateId>;
     fn target_id(&self) -> StateId;
     fn is_active(&self, item: &D) -> bool;
-    fn eval(&self, item: &D, states: &[Ext<Q>]) -> Ext<Q>;
+    fn eval(&self, item: &D, states: &StateList<Ext<Q>>) -> Ext<Q>;
 
     /* Derived functionality */
-    fn eval_precond(&self, states: &[Ext<Q>]) -> bool {
-        self.source_ids().iter().all(|&id| id < states.len())
+    fn eval_precond(&self, states: &StateList<Ext<Q>>) -> bool {
+        self.source_ids().iter().all(|&id| states.in_range(id))
     }
     fn all_ids(&self) -> Vec<StateId> {
         let mut result = self.source_ids();
         result.push(self.target_id());
         result
     }
-    // Format string to be used for debugging
-    // (lightweight Debug implementation)
-    // This format string is rather incomplete, since function closures
-    // do not implement Debug.
-    fn fmt_as_ids(&self) -> String {
-        format!("({:?}, {})", self.source_ids(), self.target_id())
+}
+
+// Lightweight Debug implementation
+// This format string is rather incomplete, since function closures
+// do not implement Debug.
+impl<D, Q> Debug for dyn Transition<D, Q> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[")?;
+        for &id in &self.source_ids() {
+            f.write_fmt(format_args!("{} ", id.0))?;
+        }
+        f.write_fmt(format_args!("-> {}]", self.target_id().0))
     }
 }
 
-impl<Q, D, G, F> Transition<D, Q> for Trans1<Q, D, G, F>
+impl<D, Q, G, F> Transition<D, Q> for Trans1<D, Q, G, F>
 where
     G: Fn(&D) -> bool,
     F: Fn(&D, &Q) -> Q,
@@ -108,7 +168,7 @@ where
     fn is_active(&self, item: &D) -> bool {
         (self.guard)(item)
     }
-    fn eval(&self, item: &D, states: &[Ext<Q>]) -> Ext<Q> {
+    fn eval(&self, item: &D, states: &StateList<Ext<Q>>) -> Ext<Q> {
         debug_assert!(self.eval_precond(states));
         ext_value::apply1(
             |q| (self.action)(item, q),
@@ -116,7 +176,7 @@ where
         )
     }
 }
-impl<Q, D, G, F> Transition<D, Q> for Trans2<Q, D, G, F>
+impl<D, Q, G, F> Transition<D, Q> for Trans2<D, Q, G, F>
 where
     G: Fn(&D) -> bool,
     F: Fn(&D, &Q, &Q) -> Q,
@@ -130,7 +190,7 @@ where
     fn is_active(&self, item: &D) -> bool {
         (self.guard)(item)
     }
-    fn eval(&self, item: &D, states: &[Ext<Q>]) -> Ext<Q> {
+    fn eval(&self, item: &D, states: &StateList<Ext<Q>>) -> Ext<Q> {
         debug_assert!(self.eval_precond(states));
         ext_value::apply2(
             |q1, q2| (self.action)(item, q1, q2),
@@ -141,6 +201,58 @@ where
 }
 
 /*
+    More transition functionality.
+
+    Exactly the same as StateId and StateList, TransId and TransList are type
+    wrappers over usize and Vec<T> where the latter can be indexed by the
+    former. The most important thing is that TransList can't be indexed by
+    StateId and StateList can't be indexed by TransId. In fact, I already caught
+    a bug due to such a mistake as I was introducing this discipline.
+*/
+
+#[derive(Copy, Clone, Debug)]
+struct TransId(usize);
+
+#[derive(Clone, Debug)]
+struct TransList<T>(Vec<T>);
+impl<T> Deref for TransList<T> {
+    type Target = Vec<T>;
+    fn deref(&self) -> &Vec<T> {
+        &self.0
+    }
+}
+impl<T> DerefMut for TransList<T> {
+    fn deref_mut(&mut self) -> &mut Vec<T> {
+        &mut self.0
+    }
+}
+impl<T> Index<TransId> for TransList<T> {
+    type Output = T;
+    fn index(&self, id: TransId) -> &Self::Output {
+        self.0.index(id.0)
+    }
+}
+impl<T> IndexMut<TransId> for TransList<T> {
+    fn index_mut(&mut self, id: TransId) -> &mut Self::Output {
+        self.0.index_mut(id.0)
+    }
+}
+
+// impl<D, Q> Debug for TransList<Box<dyn Transition<D, Q>>>
+// where
+//     Q: Debug,
+// {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         f.debug_list().entries(self.iter()).finish()
+//     }
+// }
+
+// Guard function for epsilon transitions -- should never be called, so panics
+fn epsilon_guard<D>(_item: &D) -> bool {
+    panic!("Called guard for epsilon transition!");
+}
+
+/*
     The main DataTransducer state machine.
     Implements the Transducer interface.
 
@@ -148,53 +260,39 @@ where
     being dynamic Trait objects.
 */
 
-type TransId = usize;
-struct TransitionList<'a, D, Q>(&'a Vec<Box<dyn Transition<D, Q>>>);
+const ISTATE_ID: StateId = StateId(0);
+const FSTATE_ID: StateId = StateId(1);
 
-impl<Q, D> Debug for TransitionList<'_, D, Q>
-where
-    Q: Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list().entries(self.0.iter().map(|tr| tr.fmt_as_ids())).finish()
-    }
-}
-
-// Guard function for epsilon transitions -- should never be called, so panics
-fn epsilon_guard<D>(_item: &D) -> bool {
-    panic!("Called guard for epsilon transition!");
-}
-
-pub struct DataTransducer<Q, D>
+pub struct DataTransducer<D, Q>
 where
     Q: Clone + 'static,
     D: 'static,
 {
     // Initial state: states[0]
     // Final state: states[1]
-    states: Vec<Ext<Q>>,
+    states: StateList<Ext<Q>>,
     // Transitions, divided into those executed on update from old to new states
     // and "epsilon transitions" which define a least fixed point on init and
     // after every update
-    updates: Vec<Box<dyn Transition<D, Q>>>,
-    epsilons: Vec<Box<dyn Transition<(), Q>>>,
+    updates: TransList<Box<dyn Transition<D, Q>>>,
+    epsilons: TransList<Box<dyn Transition<(), Q>>>,
     // Store for each state which epsilon-transitions go out from this state
     // (needed for the least fixed point calculation)
-    eps_out: Vec<Vec<TransId>>,
+    eps_out: StateList<Vec<TransId>>,
     // Dummy marker for D
     ph_d: PhantomData<D>,
 }
 
-impl<Q, D> Default for DataTransducer<Q, D>
+impl<D, Q> Default for DataTransducer<D, Q>
 where
     Q: Clone + 'static,
     D: 'static,
 {
     fn default() -> Self {
-        let states = vec![Ext::None, Ext::None];
-        let updates = vec![];
-        let epsilons = vec![];
-        let eps_out = vec![vec![], vec![]];
+        let states = StateList(vec![Ext::None, Ext::None]);
+        let updates = TransList(vec![]);
+        let epsilons = TransList(vec![]);
+        let eps_out = StateList(vec![vec![], vec![]]);
         let ph_d = PhantomData;
         let result = Self { states, updates, epsilons, eps_out, ph_d };
         debug_assert!(result.invariant());
@@ -202,7 +300,7 @@ where
     }
 }
 
-impl<Q, D> Debug for DataTransducer<Q, D>
+impl<D, Q> Debug for DataTransducer<D, Q>
 where
     Q: Clone + Debug + 'static,
     D: Debug + 'static,
@@ -210,14 +308,14 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DataTransducer")
             .field("states", &self.states)
-            .field("updates", &TransitionList(&self.updates))
-            .field("epsilons", &TransitionList(&self.epsilons))
+            .field("updates", &self.updates)
+            .field("epsilons", &self.epsilons)
             .field("eps_out", &self.eps_out)
             .finish()
     }
 }
 
-impl<Q, D> DataTransducer<Q, D>
+impl<D, Q> DataTransducer<D, Q>
 where
     Q: Clone + 'static,
     D: 'static,
@@ -243,54 +341,59 @@ where
     // Add an update transition with one source state
     pub fn add_transition1<G, F>(
         &mut self,
-        source: StateId,
-        target: StateId,
+        source: usize,
+        target: usize,
         guard: G,
         action: F,
     ) where
         G: Fn(&D) -> bool + 'static,
         F: Fn(&D, &Q) -> Q + 'static,
     {
-        let ph_d = PhantomData;
-        let ph_q = PhantomData;
-        let t = Trans1 { source, target, guard, action, ph_d, ph_q };
-        self.add_transition_core(t);
+        self.add_transition_core(Trans1 {
+            source: StateId(source),
+            target: StateId(target),
+            guard,
+            action,
+            ph_d: PhantomData,
+            ph_q: PhantomData,
+        });
     }
     // Add an update transition with two source states
     pub fn add_transition2<G, F>(
         &mut self,
-        source1: StateId,
-        source2: StateId,
-        target: StateId,
+        source1: usize,
+        source2: usize,
+        target: usize,
         guard: G,
         action: F,
     ) where
         G: Fn(&D) -> bool + 'static,
         F: Fn(&D, &Q, &Q) -> Q + 'static,
     {
-        let ph_d = PhantomData;
-        let ph_q = PhantomData;
-        let t = Trans2 { source1, source2, target, guard, action, ph_d, ph_q };
-        self.add_transition_core(t);
+        self.add_transition_core(Trans2 {
+            source1: StateId(source1),
+            source2: StateId(source2),
+            target: StateId(target),
+            guard,
+            action,
+            ph_d: PhantomData,
+            ph_q: PhantomData,
+        });
     }
     // Add an "identity transition" which preserves a particular state from one
     // timestep to the next. (This is common enough that it's worth exposing
     // specifically in the API.)
-    pub fn add_iden(&mut self, source: StateId, target: StateId) {
+    pub fn add_iden(&mut self, source: usize, target: usize) {
         self.add_transition1(source, target, |_| true, |_, q| q.clone())
     }
     // Add an epsilon transition with one source state
-    pub fn add_epsilon1<F>(
-        &mut self,
-        source: StateId,
-        target: StateId,
-        action: F,
-    ) where
+    pub fn add_epsilon1<F>(&mut self, source: usize, target: usize, action: F)
+    where
         F: Fn(&Q) -> Q + 'static,
     {
         self.add_epsilon_core(Trans1 {
-            source,
-            target,
+            source: StateId(source),
+            target: StateId(target),
             guard: epsilon_guard,
             action: move |_, q| action(q),
             ph_d: PhantomData,
@@ -300,17 +403,17 @@ where
     // Add an update transition with two source states
     pub fn add_epsilon2<F>(
         &mut self,
-        source1: StateId,
-        source2: StateId,
-        target: StateId,
+        source1: usize,
+        source2: usize,
+        target: usize,
         action: F,
     ) where
         F: Fn(&Q, &Q) -> Q + 'static,
     {
         self.add_epsilon_core(Trans2 {
-            source1,
-            source2,
-            target,
+            source1: StateId(source1),
+            source2: StateId(source2),
+            target: StateId(target),
             guard: epsilon_guard,
             action: move |_, q1, q2| action(q1, q2),
             ph_d: PhantomData,
@@ -318,12 +421,12 @@ where
         });
     }
 
-    /* Utility / conveniences and hidden functionality */
+    /* Utility / conveniences */
     fn add_to_istate(&mut self, i: Ext<Q>) {
-        self.states[0] += i
+        self.states[ISTATE_ID] += i
     }
     fn get_fstate(&self) -> Ext<Q> {
-        self.states[1].clone()
+        self.states[FSTATE_ID].clone()
     }
     fn eval_epsilon(&self, tid: TransId) -> Ext<Q> {
         self.epsilons[tid].eval(&(), &self.states)
@@ -341,8 +444,9 @@ where
         Tr: Transition<(), Q> + 'static,
     {
         debug_assert!(self.trans_precond(&tr));
+        let new_tr_id = TransId(self.epsilons.len());
         for source_id in tr.source_ids() {
-            self.eps_out[source_id].push(tr.target_id());
+            self.eps_out[source_id].push(new_tr_id);
         }
         self.epsilons.push(Box::new(tr));
         debug_assert!(self.invariant());
@@ -357,8 +461,8 @@ where
             self.eps_out.iter().map(|ids| ids.len()).sum::<usize>(),
             self.epsilons.iter().map(|eps| eps.source_ids().len()).sum(),
         );
-        for (state_id, ids) in self.eps_out.iter().enumerate() {
-            for &id in ids {
+        for (state_id, eps_ids) in self.eps_out.enumerate() {
+            for &id in eps_ids {
                 debug_assert!(self.epsilons[id]
                     .source_ids()
                     .iter()
@@ -374,7 +478,7 @@ where
         // PRECONDITION for add_transition() and add_epsilon():
         // transition sources and targets must
         // already have been added to the machine.
-        tr.all_ids().iter().all(|&id| id < self.states.len())
+        tr.all_ids().iter().all(|&id| self.states.in_range(id))
     }
 
     /* Streaming Algorithm */
@@ -388,8 +492,10 @@ where
         // number increases. But this only really matters for transitions with
         // more than one or two source states.
         let n_epsilons = self.epsilons.len();
-        let mut trans_wklist: Vec<TransId> = (0..n_epsilons).collect();
-        let mut trans_vals: Vec<Ext<()>> = vec![Ext::None; n_epsilons];
+        let mut trans_wklist: Vec<TransId> =
+            (0..n_epsilons).map(TransId).collect();
+        let mut trans_vals: TransList<Ext<()>> =
+            TransList(vec![Ext::None; n_epsilons]);
         while let Some(tr_id) = trans_wklist.pop() {
             let cur = trans_vals[tr_id];
             let tgt_id = self.epsilons[tr_id].target_id();
@@ -416,8 +522,8 @@ where
         // The update logic prior to evaluating epsilons -- not as complex
         // as eval_epsilons() as here we assume updates only take old states
         // and return new states.
-        let mut new_states = vec![Ext::None; self.states.len()];
-        for tr in &self.updates {
+        let mut new_states = StateList(vec![Ext::None; self.states.len()]);
+        for tr in self.updates.iter() {
             if tr.is_active(item) {
                 new_states[tr.target_id()] += tr.eval(item, &self.states);
             }
@@ -426,7 +532,7 @@ where
     }
 }
 
-impl<Q, D> Transducer<Q, D, Q> for DataTransducer<Q, D>
+impl<D, Q> Transducer<Q, D, Q> for DataTransducer<D, Q>
 where
     Q: Clone + 'static,
     D: 'static,
@@ -472,13 +578,13 @@ where
 mod tests {
     use super::*;
 
-    type ExQ = usize;
     type ExD = (char, usize);
+    type ExQ = usize;
 
     #[test]
     fn test_popl19_ex1() {
         // Initialize
-        let mut m = DataTransducer::<ExQ, ExD>::new();
+        let mut m = DataTransducer::<ExD, ExQ>::new();
         m.set_nstates(4);
         m.add_iden(0, 0);
         m.add_transition1(0, 3, |&d| d.0 == 'a', |&d, _| d.1);
