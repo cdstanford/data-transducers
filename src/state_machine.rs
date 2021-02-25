@@ -439,7 +439,7 @@ where
     where
         Tr: 'a + Transition<D, Q>,
     {
-        debug_assert!(self.trans_precond(&tr));
+        assert!(self.trans_precond(&tr));
         self.updates.push(Box::new(tr));
         debug_assert!(self.invariant());
     }
@@ -611,6 +611,9 @@ mod tests {
         // Initialize
         let mut m = DataTransducer::<ExD, ExQ>::new();
         m.set_nstates(4);
+        assert_eq!(m.n_states(), 4);
+        assert_eq!(m.n_transs(), 0);
+        assert!(m.is_epsilon());
         // 0: Initial, always set to Ext::One
         // 1: Final, sum of last three 'a' events
         // 2: Sum of last two 'a' events
@@ -621,6 +624,9 @@ mod tests {
         m.add_transition1(0, 3, |&d| d.0 == 'a', |&d, _q| d.1);
         m.add_transition1(3, 2, |&d| d.0 == 'a', |&d, &q| q + d.1);
         m.add_transition1(2, 1, |&d| d.0 == 'a', |&d, &q| q + d.1);
+        assert_eq!(m.n_states(), 4);
+        assert_eq!(m.n_transs(), 6);
+        assert!(!m.is_epsilon());
         // Test
         m.init_expect(0, Ext::None);
         m.update_expect(('a', 6), Ext::None);
@@ -656,6 +662,8 @@ mod tests {
         m.add_transition2(2, 3, 1, |&d| d.0 == '#', |_d, &q2, &q3| q2 / q3);
         m.add_iden(0, 1, |&d| d.0 == '#');
         m.add_epsilon1(1, 0, |&q| q);
+        assert_eq!(m.n_states(), 4);
+        assert_eq!(m.n_transs(), 10);
         // Test
         m.init_expect(0, Ext::None);
         m.update_expect(('b', 2), Ext::None);
@@ -686,6 +694,7 @@ mod tests {
         m.add_epsilon1(0, 2, |_q| 0);
         m.add_epsilon1(0, 3, |_q| 0);
         m.add_epsilon1(0, 6, |_q| 0);
+        assert!(m.is_epsilon());
         m.add_iden(2, 2, |&d| d.0 == 'b');
         m.add_iden(4, 4, |&d| d.0 == 'b');
         m.add_iden(3, 3, |&d| d.0 == 'a');
@@ -697,6 +706,7 @@ mod tests {
         m.add_transition1(5, 5, |&d| d.0 == 'b', |&d, &q| q.max(d.1));
         m.add_transition2(4, 5, 1, |&d| d.0 == '#', |_d, &q4, &q5| q4 - q5);
         m.add_transition1(6, 0, |&d| d.0 == '#', |_d, _q| 0);
+        assert_eq!(m.n_transs(), 14);
         // Test
         m.init_expect(0, Ext::None);
         m.update_expect(('b', 2), Ext::None);
@@ -713,5 +723,79 @@ mod tests {
         m.update_expect(('a', 7), Ext::None);
         m.update_expect(('b', 1), Ext::None);
         m.update_expect(('#', 0), Ext::One(6));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_set_nstates_bad() {
+        let mut m = DataTransducer::<ExD, ExQ>::new();
+        m.set_nstates(5);
+        m.set_nstates(4);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_nonexistent_target() {
+        let mut m = DataTransducer::<ExD, ExQ>::new();
+        m.set_nstates(4);
+        m.add_iden(3, 4, |_| false);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_nonexistent_source() {
+        let mut m = DataTransducer::<ExD, ExQ>::new();
+        m.set_nstates(4);
+        m.add_transition2(1, 4, 3, |_| false, |_, _, _| 0);
+    }
+
+    #[test]
+    fn test_loop_1() {
+        let mut m = DataTransducer::<ExD, ExQ>::new();
+        m.set_nstates(3);
+        m.add_epsilon1(0, 1, |_| 0);
+        m.add_epsilon1(1, 2, |_| 0);
+        m.add_epsilon1(2, 0, |_| 0);
+        m.update_expect(('a', 0), Ext::None);
+        m.init_expect(0, Ext::Many);
+        m.init_expect(0, Ext::Many);
+        m.update_expect(('a', 0), Ext::None);
+        m.init_expect(0, Ext::Many);
+        m.reset();
+        m.update_expect(('a', 0), Ext::None);
+        m.init_expect(0, Ext::Many);
+    }
+
+    #[test]
+    fn test_loop_2() {
+        let mut m = DataTransducer::<ExD, ExQ>::new();
+        m.set_nstates(4);
+        m.add_epsilon1(0, 1, |_| 0);
+        m.add_epsilon2(0, 1, 2, |_, _| 0);
+        m.add_epsilon2(2, 3, 1, |_, _| 0);
+        m.add_epsilon1(3, 0, |_| 0);
+        m.add_iden(2, 3, |_| true);
+        m.update_expect(('a', 0), Ext::None);
+        m.init_expect(3, Ext::One(0));
+        m.update_expect(('a', 0), Ext::Many);
+        m.update_expect(('a', 2), Ext::Many);
+        m.init_expect(0, Ext::Many);
+    }
+
+    #[test]
+    fn test_reset() {
+        let mut m = DataTransducer::<ExD, ExQ>::new();
+        m.add_epsilon1(0, 1, |&q| q);
+        m.add_iden(1, 1, |_d| true);
+        m.update_expect(('a', 0), Ext::None);
+        m.init_expect(1, Ext::One(1));
+        m.update_expect(('a', 6), Ext::One(1));
+        m.update_expect(('a', 5), Ext::One(1));
+        m.init_expect(0, Ext::Many);
+        m.update_expect(('a', 5), Ext::Many);
+        m.init_expect(1, Ext::Many);
+        m.reset();
+        m.update_expect(('a', 0), Ext::None);
+        m.init_expect(2, Ext::One(2));
     }
 }
