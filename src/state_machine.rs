@@ -56,21 +56,6 @@ where
     ph_d: PhantomData<D>,
 }
 
-impl<Q, D, G, F> Debug for Trans1<Q, D, G, F>
-where
-    G: Fn(&D) -> bool,
-    F: Fn(&D, &Q) -> Q,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Trans1")
-            .field("source", &self.source)
-            .field("target", &self.target)
-            // .field("guard", &"<Fn(&D) -> bool>")
-            // .field("action", &"<Fn(&D, &Q) -> Q>")
-            .finish()
-    }
-}
-
 struct Trans2<Q, D, G, F>
 where
     G: Fn(&D) -> bool,
@@ -85,23 +70,7 @@ where
     ph_d: PhantomData<D>,
 }
 
-impl<Q, D, G, F> Debug for Trans2<Q, D, G, F>
-where
-    G: Fn(&D) -> bool,
-    F: Fn(&D, &Q, &Q) -> Q,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Trans1")
-            .field("source1", &self.source1)
-            .field("source2", &self.source2)
-            .field("target", &self.target)
-            // .field("guard", &"<Fn(&D) -> bool>")
-            // .field("action", &"<Fn(&D, &Q, &Q) -> Q>")
-            .finish()
-    }
-}
-
-pub trait Transition<D, Q>: Debug {
+pub trait Transition<D, Q> {
     fn source_ids(&self) -> Vec<StateId>;
     fn target_id(&self) -> StateId;
     fn is_active(&self, item: &D) -> bool;
@@ -115,6 +84,13 @@ pub trait Transition<D, Q>: Debug {
         let mut result = self.source_ids();
         result.push(self.target_id());
         result
+    }
+    // Format string to be used for debugging
+    // (lightweight Debug implementation)
+    // This format string is rather incomplete, since function closures
+    // do not implement Debug.
+    fn fmt_as_ids(&self) -> String {
+        format!("({:?}, {})", self.source_ids(), self.target_id())
     }
 }
 
@@ -173,9 +149,18 @@ where
 */
 
 type TransId = usize;
+struct TransitionList<'a, D, Q>(&'a Vec<Box<dyn Transition<D, Q>>>);
 
-// Guard function for epsilon transitions -- should never be called,
-// so panics
+impl<Q, D> Debug for TransitionList<'_, D, Q>
+where
+    Q: Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.0.iter().map(|tr| tr.fmt_as_ids())).finish()
+    }
+}
+
+// Guard function for epsilon transitions -- should never be called, so panics
 fn epsilon_guard<D>(_item: &D) -> bool {
     panic!("Called guard for epsilon transition!");
 }
@@ -225,8 +210,8 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DataTransducer")
             .field("states", &self.states)
-            .field("updates", &self.updates)
-            .field("epsilons", &self.epsilons)
+            .field("updates", &TransitionList(&self.updates))
+            .field("epsilons", &TransitionList(&self.epsilons))
             .field("eps_out", &self.eps_out)
             .finish()
     }
@@ -502,37 +487,21 @@ mod tests {
         m.add_transition1(2, 2, |&d| d.0 == 'b', |_, &q| q);
         m.add_transition1(3, 3, |&d| d.0 == 'b', |_, &q| q);
         // Test
+        println!("{:?}", m);
         assert_eq!(m.init_one(0), Ext::None);
+        assert_eq!(m.update_val(('a', 6)), Ext::None);
+        assert_eq!(m.update_val(('b', 2)), Ext::None);
+        assert_eq!(m.update_val(('a', 5)), Ext::None);
+        assert_eq!(m.update_val(('a', 7)), Ext::One(18));
+        assert_eq!(m.update_val(('b', 2)), Ext::None);
+        assert_eq!(m.update_val(('a', 8)), Ext::One(20));
         println!("{:?}", m);
-        assert_eq!(m.update(&('a', 6)), Ext::None);
+        assert_eq!(m.update_val(('#', 0)), Ext::None);
+        assert_eq!(m.update_val(('b', 2)), Ext::None);
+        assert_eq!(m.update_val(('a', 2)), Ext::None);
+        assert_eq!(m.update_val(('a', 2)), Ext::None);
+        assert_eq!(m.update_val(('a', 2)), Ext::One(6));
+        assert_eq!(m.update_val(('a', 0)), Ext::One(4));
         println!("{:?}", m);
-        assert_eq!(m.update(&('b', 2)), Ext::None);
-        println!("{:?}", m);
-        assert_eq!(m.update(&('a', 5)), Ext::None);
-        println!("{:?}", m);
-        assert_eq!(m.update(&('a', 7)), Ext::One(18));
-        println!("{:?}", m);
-        assert_eq!(m.update(&('b', 2)), Ext::None);
-        println!("{:?}", m);
-        assert_eq!(m.update(&('a', 8)), Ext::One(20));
-        println!("{:?}", m);
-        assert_eq!(m.update(&('#', 0)), Ext::None);
-        println!("{:?}", m);
-        assert_eq!(m.update(&('b', 2)), Ext::None);
-        println!("{:?}", m);
-        assert_eq!(m.update(&('a', 2)), Ext::None);
-        println!("{:?}", m);
-        assert_eq!(m.update(&('a', 2)), Ext::None);
-        println!("{:?}", m);
-        assert_eq!(m.update(&('a', 2)), Ext::One(6));
-        println!("{:?}", m);
-        assert_eq!(m.update(&('a', 2)), Ext::One(6));
     }
 }
-
-/*
-    Some next TODOs:
-    - write test update_print to avoid all the double lines in the above test
-    - implement Debug directly for DataTransducer using .source_ids, .target_ids
-      so it is not required for Transition
-*/
