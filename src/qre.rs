@@ -882,8 +882,16 @@ mod tests {
         RInput::Item('b'),
     ];
 
-    const EX_RSTRMS: &[&[RInput<i32, char>]] =
-        &[EX_RSTRM_1, EX_RSTRM_2, EX_RSTRM_3, EX_RSTRM_4, EX_RSTRM_5];
+    const EX_RSTRM_6: &[RInput<i32, char>] = &[
+        RInput::Restart(1),
+        RInput::Item('2'),
+        RInput::Restart(3),
+        RInput::Item('4'),
+    ];
+
+    const EX_RSTRMS: &[&[RInput<i32, char>]] = &[
+        EX_RSTRM_1, EX_RSTRM_2, EX_RSTRM_3, EX_RSTRM_4, EX_RSTRM_5, EX_RSTRM_6,
+    ];
 
     // Test helpers
 
@@ -915,6 +923,19 @@ mod tests {
         for rstrm in EX_RSTRMS {
             assert!(m.restartability_holds_for(rstrm.iter().cloned()));
         }
+    }
+
+    fn test_not_restartable<O, M>(m: &M)
+    where
+        M: Transducer<i32, char, O> + Clone,
+        O: Debug + Eq,
+    {
+        for rstrm in EX_RSTRMS {
+            if !(m.restartability_holds_for(rstrm.iter().cloned())) {
+                return;
+            }
+        }
+        assert!(false);
     }
 
     // The tests
@@ -1014,18 +1035,40 @@ mod tests {
 
         test_restartable(&m);
     }
+
     #[test]
-    fn test_union_restartable() {
-        // TODO
+    fn test_parcomp() {
+        let m1 = atom(
+            |ch: &char| ch.is_ascii_digit(),
+            |i, ch| i + (ch.to_digit(10).unwrap() as i32),
+        );
+        let m2 = atom(|ch: &char| ch == &'5', |i, _ch| i + 1);
+        let mut m = parcomp(m1, m2);
+
+        assert_eq!(m.init_one(10), Ext::None);
+        assert_eq!(m.update_val('5'), Ext::One((15, 11)));
+        assert_eq!(m.update_val('5'), Ext::None);
+        assert_eq!(m.init_one(10), Ext::None);
+        assert_eq!(m.update_val('6'), Ext::None);
+        assert_eq!(m.init_one(100), Ext::None);
+        assert_eq!(m.update_val('5'), Ext::One((105, 101)));
+
+        // this m is restartable
+        test_restartable(&m);
     }
 
     #[test]
-    fn test_par() {
-        // TODO
-    }
-    #[test]
-    fn test_par_restartable() {
-        // TODO
+    fn test_parcomp_not_restarable() {
+        // Non-restartable example
+        let m1 = atom(
+            |ch: &char| ch.is_ascii_digit(),
+            |i, ch| i + (ch.to_digit(10).unwrap() as i32),
+        );
+        let m2 = concat(m1.clone(), m1.clone());
+        let m = parcomp(m1, m2);
+
+        // this m is not restartable
+        test_not_restartable(&m);
     }
 
     #[test]

@@ -116,6 +116,7 @@ pub trait Transducer<I, D, O> {
 
     // Process an input stream with "restart" events (initial values),
     // processing such events using one transducer and .init()
+    // If cfg!(test), also prints debug output.
     fn process_rstream_single<'a, Strm>(
         &'a mut self,
         mut strm: Strm,
@@ -123,11 +124,18 @@ pub trait Transducer<I, D, O> {
     where
         Strm: Iterator<Item = RInput<I, D>> + 'a,
         Self: Sized + 'a,
+        O: Debug,
     {
         Box::new(iter::from_fn(move || {
-            strm.next().map(|item| match item {
-                RInput::Restart(i) => self.init_one(i),
-                RInput::Item(item) => self.update(&item),
+            strm.next().map(|item| {
+                let out = match item {
+                    RInput::Restart(i) => self.init_one(i),
+                    RInput::Item(item) => self.update(&item),
+                };
+                if cfg!(test) {
+                    println!("--> single output: {:?}", out);
+                }
+                out
             })
         }))
     }
@@ -136,7 +144,8 @@ pub trait Transducer<I, D, O> {
     // events by spawning many transducers
     // Doesn't use &self for any computation; instead
     // uses .spawn_empty() to get an initial state for each new transducer.
-    // This is used mainly for testing in restartability_holds_for below.
+    // This is used only for testing in restartability_holds_for below.
+    // Also prints debug output.
     fn process_rstream_multi<'a, Strm>(
         &'a self,
         mut strm: Strm,
@@ -155,7 +164,7 @@ pub trait Transducer<I, D, O> {
                     println!("Restart: {:?}", i);
                     transducers.push(self.spawn_empty());
                     let out = transducers.last_mut().unwrap().init_one(i);
-                    println!("--> output: {:?}", out);
+                    println!("--> multi output: {:?}", out);
                     out
                 }
                 RInput::Item(item) => {
@@ -164,7 +173,7 @@ pub trait Transducer<I, D, O> {
                     for transducer in transducers.iter_mut() {
                         out += transducer.update(&item);
                     }
-                    println!("--> output: {:?}", out);
+                    println!("--> multi output: {:?}", out);
                     out
                 }
             })
