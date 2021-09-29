@@ -187,7 +187,11 @@ where
     fn update(&mut self, item: &D) -> Ext<O> {
         let mut istate = Ext::None;
         mem::swap(&mut self.istate, &mut istate);
-        ext_value::apply1(move |x| (self.action)(x, &item), istate)
+        if (self.guard)(&item) {
+            ext_value::apply1(move |x| (self.action)(x, &item), istate)
+        } else {
+            Ext::None
+        }
     }
     fn reset(&mut self) {
         self.istate = Ext::None;
@@ -850,6 +854,8 @@ mod tests {
     use super::*;
     use crate::interface::RInput;
 
+    // Constants (examples)
+
     const EX_RSTRM_1: &[RInput<i32, char>] = &[
         RInput::Item('a'),
         RInput::Restart(3),
@@ -879,6 +885,8 @@ mod tests {
     const EX_RSTRMS: &[&[RInput<i32, char>]] =
         &[EX_RSTRM_1, EX_RSTRM_2, EX_RSTRM_3, EX_RSTRM_4, EX_RSTRM_5];
 
+    // Test helpers
+
     fn test_equiv<O, M1, M2>(mut m1: M1, mut m2: M2)
     where
         M1: Transducer<i32, char, O>,
@@ -898,6 +906,18 @@ mod tests {
             );
         }
     }
+
+    fn test_restartable<O, M>(m: &M)
+    where
+        M: Transducer<i32, char, O> + Clone,
+        O: Debug + Eq,
+    {
+        for rstrm in EX_RSTRMS {
+            assert!(m.restartability_holds_for(rstrm.iter().cloned()));
+        }
+    }
+
+    // The tests
 
     #[test]
     fn test_epsilon() {
@@ -934,9 +954,7 @@ mod tests {
     #[test]
     fn test_epsilon_restartable() {
         let m1 = epsilon(|i: i32| i * 2);
-        for rstrm in EX_RSTRMS {
-            assert!(m1.restartability_holds_for(rstrm.iter().cloned()));
-        }
+        test_restartable(&m1);
     }
 
     #[test]
@@ -945,6 +963,8 @@ mod tests {
             |ch: &char| ch.is_ascii_digit(),
             |i, ch| format!("{}{}", i, ch),
         );
+        assert_eq!(m.update_val('a'), Ext::None);
+        assert_eq!(m.init_one("x".to_string()), Ext::None);
         assert_eq!(m.update_val('a'), Ext::None);
         assert_eq!(m.init_one("x".to_string()), Ext::None);
         assert_eq!(m.update_val('1'), Ext::One("x1".to_string()));
@@ -971,16 +991,28 @@ mod tests {
             },
         );
         let m3 = atom(|_ch| true, |i, _ch| i + 3);
-        for rstrm in EX_RSTRMS {
-            assert!(m1.restartability_holds_for(rstrm.iter().cloned()));
-            assert!(m2.restartability_holds_for(rstrm.iter().cloned()));
-            assert!(m3.restartability_holds_for(rstrm.iter().cloned()));
-        }
+        test_restartable(&m1);
+        test_restartable(&m2);
+        test_restartable(&m3);
     }
 
     #[test]
     fn test_union() {
-        // TODO
+        let m1 = atom(
+            |ch: &char| ch.is_ascii_digit(),
+            |i, ch| i + (ch.to_digit(10).unwrap() as i32),
+        );
+        let m2 = epsilon(|i: i32| i + 1);
+        let mut m = union(m1, m2);
+
+        assert_eq!(m.update_val('1'), Ext::None);
+        assert_eq!(m.init_one(3), Ext::One(4));
+        assert_eq!(m.update_val('7'), Ext::One(10));
+        assert_eq!(m.update_val('2'), Ext::None);
+        assert_eq!(m.init_one(0), Ext::One(1));
+        assert_eq!(m.update_val('a'), Ext::None);
+
+        test_restartable(&m);
     }
     #[test]
     fn test_union_restartable() {
