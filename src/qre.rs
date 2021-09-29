@@ -935,7 +935,7 @@ mod tests {
                 return;
             }
         }
-        assert!(false);
+        panic!("Not-restartable test failed: no counterexample stream found");
     }
 
     // The tests

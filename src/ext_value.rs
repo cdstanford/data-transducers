@@ -279,19 +279,24 @@ mod tests {
         let x1: Ext<String> = Ext::One("Hello".to_owned());
         let x2: Ext<String> = Ext::One("World".to_owned());
         let x3: Ext<String> = Ext::Many;
-        assert_eq!(x0.clone() + x0.clone(), x0.clone());
-        assert_eq!(x0.clone() + x1.clone(), x1.clone());
-        assert_eq!(x1.clone() + x0.clone(), x1.clone());
-        assert_eq!(x1.clone() + x2.clone(), x3.clone());
-        assert_eq!(x0.clone() + x2.clone(), x2.clone());
-        assert_eq!(x0.clone() + x3.clone(), x3.clone());
-        assert_eq!(x3.clone() + x0.clone(), x3.clone());
-        assert_eq!(x1.clone() + x3.clone(), x3.clone());
-        assert_eq!(x3.clone() + x2.clone(), x3.clone());
-        assert_eq!(x3.clone() + x3.clone(), x3.clone());
+        assert_eq!(x0.clone() + x0.clone(), x0);
+        assert_eq!(x0.clone() + x1.clone(), x1);
+        assert_eq!(x1.clone() + x0.clone(), x1);
+        assert_eq!(x1.clone() + x2.clone(), x3);
+        assert_eq!(x0.clone() + x2.clone(), x2);
+        assert_eq!(x0.clone() + x3.clone(), x3);
+        assert_eq!(x3.clone() + x0.clone(), x3);
+        assert_eq!(x1.clone() + x3.clone(), x3);
+        assert_eq!(x3.clone() + x2.clone(), x3);
+        assert_eq!(x3.clone() + x3.clone(), x3);
+        drop(x0);
+        drop(x1);
+        drop(x2);
+        drop(x3);
     }
 
     #[test]
+    #[allow(clippy::eq_op)]
     fn test_eq() {
         assert_eq!(Ext::One(3), Ext::One(1 + 2));
         assert_ne!(Ext::One(-1), Ext::One(1));
