@@ -347,8 +347,9 @@ where
         self.m1.is_epsilon() && self.m2.is_epsilon()
     }
     fn is_restartable(&self) -> bool {
-        // Requires checking if the language of the two transducers agrees!
-        // Needs more infrastructure to encode and analyze regular languages.
+        // TODO: Requires checking if the languages of the two transducers
+        // agree. Need more infrastructure to encode and analyze regular
+        // languages.
         unimplemented!()
     }
     fn n_states(&self) -> usize {

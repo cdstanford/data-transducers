@@ -556,7 +556,7 @@ where
     }
     fn is_restartable(&self) -> bool {
         // TODO: we could implement the decision procedure for this, but it is
-        // rather complex (PSPACE-complete)
+        // rather complex (PSPACE-complete).
         unimplemented!()
     }
     fn n_states(&self) -> usize {
