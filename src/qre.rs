@@ -1074,11 +1074,31 @@ mod tests {
 
     #[test]
     fn test_concat() {
-        // TODO
-    }
-    #[test]
-    fn test_concat_restartable() {
-        // TODO
+        let m1 = atom(|ch: &char| ch.is_ascii_digit(), |i, _ch| i + 1);
+        let m2 = atom(|ch: &char| *ch == '1' || *ch == 'a', |i, _ch| i + 1);
+        let mut m = concat(m1, m2);
+
+        assert_eq!(m.update_val('1'), Ext::None);
+        assert_eq!(m.update_val('1'), Ext::None);
+        assert_eq!(m.init_one(0), Ext::None);
+        assert_eq!(m.update_val('5'), Ext::None);
+        assert_eq!(m.update_val('1'), Ext::One(2));
+        assert_eq!(m.update_val('1'), Ext::None);
+
+        assert_eq!(m.init_one(1), Ext::None);
+        assert_eq!(m.update_val('1'), Ext::None);
+        assert_eq!(m.init_one(2), Ext::None);
+        assert_eq!(m.update_val('2'), Ext::None);
+        assert_eq!(m.init_one(3), Ext::None);
+        assert_eq!(m.update_val('1'), Ext::One(4));
+        assert_eq!(m.init_one(4), Ext::None);
+        assert_eq!(m.update_val('1'), Ext::One(5));
+        assert_eq!(m.init_one(5), Ext::None);
+        assert_eq!(m.update_val('a'), Ext::One(6));
+        assert_eq!(m.update_val('1'), Ext::None);
+        assert_eq!(m.update_val('1'), Ext::None);
+
+        test_restartable(&m);
     }
 
     #[test]
