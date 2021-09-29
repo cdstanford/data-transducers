@@ -47,6 +47,13 @@ impl<T> Ext<T> {
             _ => None,
         }
     }
+    // Note: it seems natural to implement TryInto<T> for Ext<T>
+    // instead of unwrap. Unfortunately this doesn't work due to
+    // conflicting trait implementations, but I think it may be
+    // a compiler edge case.
+    pub fn unwrap(self) -> T {
+        self.into_inner().expect("Conversion from Ext failed: not a One value")
+    }
     pub fn split<T1, T2, F>(self, f: F) -> (Ext<T1>, Ext<T2>)
     where
         F: FnOnce(T) -> (T1, T2),
@@ -93,27 +100,9 @@ impl<T> From<Option<T>> for Ext<T> {
     }
 }
 
-impl<T> Into<Option<T>> for Ext<T> {
-    fn into(self) -> Option<T> {
-        self.into_inner()
-    }
-}
-
-// Weirdly this doesn't work due to conflicting implementations of the trait,
-// but I think it's a compiler edge case
-// impl<T> TryInto<T> for Ext<T> {
-//     type Error = String;
-//     fn try_into(self) -> Result<T, String> {
-//         match self {
-//             Ext::One(t) => Ok(t),
-//             _ => Err("Conversion from Ext failed: not a One value"),
-//         }
-//     }
-// }
-// So we just implement .unwrap(), not as desirable though.
-impl<T> Ext<T> {
-    pub fn unwrap(self) -> T {
-        self.into_inner().expect("Conversion from Ext failed: not a One value")
+impl<T> From<Ext<T>> for Option<T> {
+    fn from(e: Ext<T>) -> Self {
+        e.into_inner()
     }
 }
 

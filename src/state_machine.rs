@@ -241,15 +241,6 @@ impl<T> IndexMut<TransId> for TransList<T> {
     }
 }
 
-// impl<D, Q> Debug for TransList<Box<dyn Transition<D, Q>>>
-// where
-//     Q: Debug,
-// {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         f.debug_list().entries(self.iter()).finish()
-//     }
-// }
-
 // Guard function for epsilon transitions -- should never be called, so panics
 fn epsilon_guard<D>(_item: &D) -> bool {
     panic!("Called guard for epsilon transition!");
