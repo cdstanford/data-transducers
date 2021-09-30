@@ -912,6 +912,9 @@ mod tests {
         M: Transducer<i32, char, O> + Clone,
         O: Debug + Eq,
     {
+        // TODO: uncomment this line when restartability variable
+        // is implemented for parcomp
+        // assert!(m.is_restartable());
         for rstrm in EX_RSTRMS {
             assert!(m.restartability_holds_for(rstrm.iter().cloned()));
         }
@@ -922,6 +925,9 @@ mod tests {
         M: Transducer<i32, char, O> + Clone,
         O: Debug + Eq,
     {
+        // TODO: uncomment this line when restartability variable
+        // is implemented for parcomp
+        // assert!(!m.is_restartable());
         for rstrm in EX_RSTRMS {
             if !(m.restartability_holds_for(rstrm.iter().cloned())) {
                 return;
@@ -1127,11 +1133,27 @@ mod tests {
 
     #[test]
     fn test_aggregate() {
-        // TODO
-    }
-    #[test]
-    fn test_aggregate_restartable() {
-        // TODO
+        let m1 = atom(|ch: &char| ch.is_ascii_digit(), |i, _ch| i + 1);
+        let m2 = iterate(m1);
+        let mut m = aggregate(m2, |x1, x2| x1 + x2);
+
+        // Aggregating 1, 2, 3, 4, ... gives the triangular numbers
+        assert_eq!(m.init_one((1, 100)), Ext::One(101));
+        assert_eq!(m.update_val('0'), Ext::One(103));
+        assert_eq!(m.update_val('0'), Ext::One(106));
+        assert_eq!(m.update_val('0'), Ext::One(110));
+        assert_eq!(m.update_val('0'), Ext::One(115));
+
+        // If the sub-transducer stops producing output, the aggregate
+        // becomes None
+        assert_eq!(m.update_val('a'), Ext::None);
+        assert_eq!(m.update_val('0'), Ext::None);
+        assert_eq!(m.update_val('0'), Ext::None);
+
+        // Aggregate is not restartable
+        // (convert input first)
+        let m = concat(epsilon(|x| (x, x)), m);
+        test_not_restartable(&m);
     }
 
     #[test]
