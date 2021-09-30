@@ -533,22 +533,24 @@ where
             Some(false) => {
                 if cfg!(debug_assertions) {
                     self.istate += i.to_unit();
-                    assert_eq!(self.m.init(i), Ext::None);
+                    assert_eq!(self.m.init(i.clone()), Ext::None);
                 } else if !self.istate.is_many() {
                     self.istate += i.to_unit();
-                    self.m.init(i);
+                    self.m.init(i.clone());
                 }
-                Ext::None
+                // Return the input (epsilon/identity case)
+                i
             }
             None => {
                 // This is where we find out if m is loopy
                 debug_assert!(self.istate.is_none());
                 self.istate = i.to_unit();
-                let out = self.m.init(i);
+                let out = self.m.init(i.clone());
                 if out.is_none() {
                     // Not loopy
                     self.loopy = Some(false);
-                    Ext::None
+                    // Return the input (epsilon/identity case)
+                    i
                 } else {
                     // Loopy; set this knowledge and rerun function
                     // with new output
@@ -560,19 +562,8 @@ where
     }
     fn update(&mut self, item: &D) -> Ext<X> {
         self.istate = Ext::None;
-        let out1 = self.m.update(item);
-        let out2 = self.init(out1.clone());
-        if out2.is_none() {
-            debug_assert_eq!(self.istate, out1.to_unit());
-            out1
-        } else {
-            // Should only happen if m is loopy
-            debug_assert_eq!(self.loopy, Some(true));
-            debug_assert_eq!(self.istate, Ext::Many);
-            debug_assert!(!out1.is_none());
-            debug_assert_eq!(out2, Ext::Many);
-            Ext::Many
-        }
+        let sub_out = self.m.update(item);
+        self.init(sub_out)
     }
     fn reset(&mut self) {
         self.m.reset();
@@ -1103,11 +1094,35 @@ mod tests {
 
     #[test]
     fn test_iterate() {
-        // TODO
-    }
-    #[test]
-    fn test_iterate_restartable() {
-        // TODO
+        let m1 = atom(|ch: &char| ch.is_ascii_digit(), |i, _ch| i + 1);
+        let m2 = atom(|_ch: &char| true, |i, _ch| i + 1);
+        let m3 = concat(m1, m2);
+        let mut m = iterate(m3);
+
+        assert_eq!(m.update_val('1'), Ext::None);
+        assert_eq!(m.init_one(100), Ext::One(100));
+        assert_eq!(m.update_val('0'), Ext::None);
+        assert_eq!(m.update_val('0'), Ext::One(102));
+        assert_eq!(m.update_val('0'), Ext::None);
+        assert_eq!(m.update_val('0'), Ext::One(104));
+        assert_eq!(m.update_val('0'), Ext::None);
+        assert_eq!(m.init_one(200), Ext::One(200));
+        assert_eq!(m.update_val('0'), Ext::One(106));
+        assert_eq!(m.update_val('0'), Ext::One(202));
+        assert_eq!(m.update_val('0'), Ext::One(108));
+        assert_eq!(m.update_val('0'), Ext::One(204));
+        assert_eq!(m.init_one(300), Ext::One(300));
+        assert_eq!(m.update_val('0'), Ext::One(110));
+        assert_eq!(m.update_val('0'), Ext::Many);
+        assert_eq!(m.update_val('0'), Ext::One(112));
+        assert_eq!(m.update_val('0'), Ext::Many);
+        assert_eq!(m.update_val('a'), Ext::One(114));
+        assert_eq!(m.update_val('0'), Ext::None);
+        assert_eq!(m.update_val('0'), Ext::One(116));
+        assert_eq!(m.update_val('a'), Ext::None);
+        assert_eq!(m.update_val('0'), Ext::None);
+
+        test_restartable(&m);
     }
 
     #[test]
